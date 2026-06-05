@@ -14,32 +14,11 @@ tokens + tool calls incrementally.
 ## 1. Install
 
 ```bash
-# Using npm
-npm install
-
-# Or using pnpm
 pnpm install
 ```
 
-The relevant runtime dependencies (already declared in `package.json`):
-
-```bash
-npm install \
-  @nestjs/common @nestjs/core @nestjs/platform-express @nestjs/config \
-  reflect-metadata rxjs \
-  ai @ai-sdk/amazon-bedrock \
-  @aws-sdk/client-bedrock-agent-runtime @aws-sdk/credential-providers \
-  pg \
-  zod class-validator class-transformer \
-  express
-
-npm install -D \
-  @nestjs/cli @nestjs/schematics @nestjs/testing \
-  typescript ts-node tsconfig-paths \
-  @types/node @types/express @types/pg @types/supertest \
-  jest ts-jest @types/jest supertest \
-  ts-loader
-```
+This is a pnpm workspace. The NestJS backend is the root package and the
+Next.js frontend is in `frontend/`.
 
 ## 2. Configure
 
@@ -59,7 +38,13 @@ process to exit **before** the HTTP server starts.
 ### Local
 
 ```bash
-npm run start:dev   # nest start --watch
+pnpm run start:dev
+```
+
+Run the frontend in a second terminal:
+
+```bash
+BACKEND_CHAT_URL=http://127.0.0.1:3000/agent/chat pnpm run frontend:dev -- --hostname 127.0.0.1 --port 3001
 ```
 
 ### Docker (with Postgres)
@@ -71,7 +56,7 @@ docker compose up --build
 This brings up `postgres` (with healthcheck) and the `app` service on
 `http://localhost:3000`.
 
-## 4. Trigger from a frontend
+## 4. Trigger from the frontend
 
 ### `curl` smoke test (no frontend required)
 
@@ -87,35 +72,10 @@ You should see a stream of UI Message Stream events:
   `searchKnowledgeBase`, `getCompanyProduct`, or `querySalesPerformance`
 - a final `finish` event
 
-### React (Vercel AI SDK `useChat`)
-
-```tsx
-'use client';
-import { useChat } from '@ai-sdk/react';
-
-export default function Chat() {
-  const { messages, input, handleInputChange, handleSubmit, status } = useChat({
-    api: 'http://localhost:3000/agent/chat',
-  });
-
-  return (
-    <div>
-      {messages.map(m => (
-        <div key={m.id}>
-          <b>{m.role}:</b>
-          {m.parts.map((part, i) =>
-            part.type === 'text' ? <span key={i}>{part.text}</span> : null,
-          )}
-        </div>
-      ))}
-      <form onSubmit={handleSubmit}>
-        <input value={input} onChange={handleInputChange} />
-        <button type="submit" disabled={status !== 'ready'}>Send</button>
-      </form>
-    </div>
-  );
-}
-```
+The Next.js App Router frontend lives in `frontend/` and uses
+`@ai-sdk/react`. By default it posts to `/api/chat`; set `BACKEND_CHAT_URL` to
+proxy that route to a hosted backend, or set `NEXT_PUBLIC_CHAT_API_URL` to call
+another endpoint directly from the browser.
 
 ## 5. Project layout
 
