@@ -73,9 +73,10 @@ You should see a stream of UI Message Stream events:
 - a final `finish` event
 
 The Next.js App Router frontend lives in `frontend/` and uses
-`@ai-sdk/react`. By default it posts to `/api/chat`; set `BACKEND_CHAT_URL` to
-proxy that route to a hosted backend, or set `NEXT_PUBLIC_CHAT_API_URL` to call
-another endpoint directly from the browser.
+`@ai-sdk/react`. By default it posts to `/api/chat`; set `BACKEND_CHAT_URL` so
+the Next.js API route can proxy that request to the Nest backend. You can also
+set `NEXT_PUBLIC_CHAT_API_URL` to call another endpoint directly from the
+browser.
 
 ## 5. Project layout
 

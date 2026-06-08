@@ -1,7 +1,7 @@
-import { tool } from 'ai';
 import { z } from 'zod';
 
 import type { DatabaseService, SalesQueryOutput } from './database.service';
+import { defineAgentTool } from '../ai-tool';
 import { wrapToolResult, type ToolOutcome } from '../tool-result';
 
 const inputSchema = z.object({
@@ -24,7 +24,7 @@ type Input = z.infer<typeof inputSchema>;
 type Output = ToolOutcome<SalesQueryOutput>;
 
 export function buildDatabaseTool(service: DatabaseService) {
-  return tool<Input, Output>({
+  return defineAgentTool<Input, Output>({
     description:
       'Fetch structured sales or performance records from PostgreSQL using a constrained, parameterized query. Use when the user asks about sales, revenue, margin, or units sold over a date range.',
     inputSchema,

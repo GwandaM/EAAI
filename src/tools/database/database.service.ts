@@ -1,8 +1,6 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import pg from 'pg';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
-import type { AppConfig } from '../../config/configuration';
+import { PG_POOL, type PgPool } from '../../persistence/pg.provider';
 
 export type SalesMetric = 'sales' | 'revenue' | 'margin' | 'units_sold';
 
@@ -27,25 +25,10 @@ export interface SalesQueryOutput {
 }
 
 @Injectable()
-export class DatabaseService implements OnModuleDestroy {
+export class DatabaseService {
   private readonly logger = new Logger(DatabaseService.name);
-  private readonly pool: pg.Pool | undefined;
 
-  constructor(config: ConfigService<AppConfig, true>) {
-    const url = config.get('database', { infer: true }).url;
-
-    if (url) {
-      this.pool = new pg.Pool({
-        connectionString: url,
-        max: 10,
-        idleTimeoutMillis: 30_000,
-        connectionTimeoutMillis: 5_000,
-      });
-      this.logger.log('PostgreSQL pool initialized.');
-    } else {
-      this.logger.warn('DATABASE_URL not set — sales tool will return mock data.');
-    }
-  }
+  constructor(@Inject(PG_POOL) private readonly pool: PgPool) {}
 
   async querySales(input: SalesQueryInput): Promise<SalesQueryOutput> {
     if (!this.pool) {
@@ -107,12 +90,5 @@ export class DatabaseService implements OnModuleDestroy {
       region,
       metric_value: Math.round(1000 + idx * 137 + Math.random() * 250),
     }));
-  }
-
-  async onModuleDestroy() {
-    if (this.pool) {
-      await this.pool.end();
-      this.logger.log('PostgreSQL pool closed.');
-    }
   }
 }

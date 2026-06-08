@@ -5,6 +5,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -52,4 +53,12 @@ export class ChatRequestDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  /**
+   * Optional conversation to persist this turn into. Must be a conversation the
+   * authenticated user owns; ignored if history persistence is disabled.
+   */
+  @IsOptional()
+  @IsUUID()
+  conversationId?: string;
 }

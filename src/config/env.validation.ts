@@ -21,7 +21,34 @@ const envSchema = z.object({
   COMPANY_API_TOKEN: z.string().min(1).optional(),
 
   DATABASE_URL: z.string().min(1).optional(),
-});
+
+  // Comma-separated list of allowed CORS origins. If unset, cross-origin requests
+  // are reflected only in development; in production they are denied unless listed.
+  CORS_ORIGINS: z.string().min(1).optional(),
+
+  // --- Auth (bearer JWT verified against a remote JWKS) ---
+  // Note: a plain z.coerce.boolean() would turn the string "false" into `true`
+  // (Boolean("false") === true), so we parse an explicit enum instead.
+  AUTH_DISABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  AUTH_JWKS_URI: z.string().url('AUTH_JWKS_URI must be a valid URL.').optional(),
+  AUTH_ISSUER: z.string().min(1).optional(),
+  AUTH_AUDIENCE: z.string().min(1).optional(),
+})
+  .superRefine((env, ctx) => {
+    // When auth is enabled, a JWKS endpoint is mandatory — fail fast at boot
+    // rather than letting every request 401 with a confusing message.
+    if (!env.AUTH_DISABLED && !env.AUTH_JWKS_URI) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AUTH_JWKS_URI'],
+        message:
+          'AUTH_JWKS_URI is required unless AUTH_DISABLED=true (it is needed to verify bearer tokens).',
+      });
+    }
+  });
 
 export type ValidatedEnv = z.infer<typeof envSchema>;
 

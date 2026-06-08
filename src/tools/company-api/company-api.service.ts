@@ -21,7 +21,11 @@ export class CompanyApiService {
   }
 
   async getProduct(productId: string): Promise<CompanyProduct> {
-    const url = new URL(`/products/${encodeURIComponent(productId)}`, this.baseUrl);
+    // Resolve against a base that ends in "/" using a *relative* segment, so any
+    // path prefix on baseUrl (e.g. https://api.company.com/v1) is preserved. A
+    // leading-slash path would be treated as root-relative and drop the prefix.
+    const base = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
+    const url = new URL(`products/${encodeURIComponent(productId)}`, base);
 
     const response = await fetch(url, {
       headers: {

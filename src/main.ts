@@ -15,8 +15,24 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
+  const config = app.get(ConfigService<AppConfig, true>);
+  const corsOrigins = config.get('corsOrigins', { infer: true });
+  const isProduction = config.get('nodeEnv', { infer: true }) === 'production';
+
+  // Only reflect arbitrary origins (with credentials) outside production. In
+  // production, require an explicit allowlist so we never echo back an attacker
+  // origin on a credentialed request.
+  const origin =
+    corsOrigins.length > 0 ? corsOrigins : isProduction ? false : true;
+
+  if (isProduction && corsOrigins.length === 0) {
+    logger.warn(
+      'CORS_ORIGINS is not set in production — cross-origin requests will be denied.',
+    );
+  }
+
   app.enableCors({
-    origin: true,
+    origin,
     credentials: true,
   });
 
@@ -33,7 +49,6 @@ async function bootstrap() {
 
   app.enableShutdownHooks();
 
-  const config = app.get(ConfigService<AppConfig, true>);
   const port = config.get('port', { infer: true });
 
   await app.listen(port);

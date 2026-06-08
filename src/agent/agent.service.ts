@@ -1,15 +1,18 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import {
   convertToModelMessages,
   stepCountIs,
   streamText,
-  type LanguageModel,
-  type ModelMessage,
-  type UIMessage,
 } from 'ai';
 import type { Response } from 'express';
 
 import { BEDROCK_MODEL } from '../llm/bedrock.provider';
+import { HistoryService } from '../persistence/history.service';
 import { CompanyApiService } from '../tools/company-api/company-api.service';
 import { buildCompanyApiTool } from '../tools/company-api/company-api.tool';
 import { DatabaseService } from '../tools/database/database.service';
@@ -17,6 +20,7 @@ import { buildDatabaseTool } from '../tools/database/database.tool';
 import { KnowledgeBaseService } from '../tools/knowledge-base/knowledge-base.service';
 import { buildKnowledgeBaseTool } from '../tools/knowledge-base/knowledge-base.tool';
 
+import type { AuthenticatedUser } from '../auth/authenticated-user';
 import type { ChatRequestDto } from './dto/chat-request.dto';
 
 const DEFAULT_SYSTEM_PROMPT = `You are an enterprise AI agent assisting employees.
@@ -27,21 +31,54 @@ available answer rather than failing the conversation.`;
 
 const MAX_AGENT_STEPS = 5;
 
+interface StreamTextResult {
+  pipeUIMessageStreamToResponse: (
+    response: Response,
+    options?: { onError?: (error: unknown) => string },
+  ) => void;
+}
+
+interface StreamTextOptions {
+  model: unknown;
+  system: string;
+  messages: unknown[];
+  tools: Record<string, unknown>;
+  stopWhen: unknown;
+  maxRetries: number;
+  onError?: (event: { error: unknown }) => void;
+  onFinish?: (event: { text: string }) => void;
+}
+
+const streamTextLoose = streamText as unknown as (
+  options: StreamTextOptions,
+) => StreamTextResult;
+
+const stepCountIsLoose = stepCountIs as unknown as (stepCount: number) => unknown;
+
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
 
   constructor(
-    @Inject(BEDROCK_MODEL) private readonly model: LanguageModel,
+    @Inject(BEDROCK_MODEL) private readonly model: unknown,
     private readonly knowledgeBase: KnowledgeBaseService,
     private readonly companyApi: CompanyApiService,
     private readonly database: DatabaseService,
+    private readonly history: HistoryService,
   ) {}
 
-  streamChat(request: ChatRequestDto, res: Response): void {
+  streamChat(request: ChatRequestDto, user: AuthenticatedUser, res: Response): void {
     const messages = this.normalizeMessages(request);
+    this.logger.log(`Chat request from user ${user.userId}`);
 
-    const result = streamText({
+    // Persist the user's turn before streaming. Best-effort: a history failure
+    // must never block the chat response.
+    const conversationId = request.conversationId;
+    if (conversationId) {
+      void this.persist(user.userId, conversationId, 'user', this.userParts(request));
+    }
+
+    const result = streamTextLoose({
       model: this.model,
       system: request.system ?? DEFAULT_SYSTEM_PROMPT,
       messages,
@@ -50,10 +87,17 @@ export class AgentService {
         getCompanyProduct: buildCompanyApiTool(this.companyApi),
         querySalesPerformance: buildDatabaseTool(this.database),
       },
-      stopWhen: stepCountIs(MAX_AGENT_STEPS),
+      stopWhen: stepCountIsLoose(MAX_AGENT_STEPS),
       maxRetries: 2,
       onError: ({ error }) => {
         this.logger.error('streamText error', error as Error);
+      },
+      onFinish: ({ text }) => {
+        if (conversationId && text) {
+          void this.persist(user.userId, conversationId, 'assistant', [
+            { type: 'text', text },
+          ]);
+        }
       },
     });
 
@@ -68,13 +112,68 @@ export class AgentService {
     });
   }
 
-  private normalizeMessages(request: ChatRequestDto): ModelMessage[] {
+  /** The parts of the user's latest turn, for persistence. */
+  private userParts(request: ChatRequestDto): unknown[] {
     if (request.messages && request.messages.length > 0) {
-      return convertToModelMessages(request.messages as unknown as UIMessage[]);
+      const last = request.messages[request.messages.length - 1];
+      return last.parts ?? [];
+    }
+    if (request.prompt) {
+      return [{ type: 'text', text: request.prompt }];
+    }
+    return [];
+  }
+
+  /** Append a turn to history, swallowing errors so chat never fails on persistence. */
+  private async persist(
+    userId: string,
+    conversationId: string,
+    role: 'user' | 'assistant',
+    parts: unknown[],
+  ): Promise<void> {
+    if (!this.history.enabled || parts.length === 0) {
+      return;
+    }
+    try {
+      const ok = await this.history.appendMessage(
+        userId,
+        conversationId,
+        role,
+        parts,
+      );
+      if (!ok) {
+        this.logger.warn(
+          `Skipped persisting ${role} turn: conversation ${conversationId} not found for user ${userId}.`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist ${role} turn: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private normalizeMessages(request: ChatRequestDto): unknown[] {
+    if (request.messages && request.messages.length > 0) {
+      const convertMessages = convertToModelMessages as unknown as (
+        messages: unknown[],
+      ) => unknown[];
+      try {
+        return convertMessages(request.messages);
+      } catch (error) {
+        // The DTO only checks that `parts` is an array; convertToModelMessages does
+        // the semantic validation. A structurally-valid-but-malformed payload is a
+        // client error (400), not an internal failure (500).
+        const detail =
+          error instanceof Error ? error.message : 'unknown conversion error';
+        throw new BadRequestException(`Invalid \`messages\` payload: ${detail}`);
+      }
     }
     if (request.prompt) {
       return [{ role: 'user', content: request.prompt }];
     }
-    throw new Error('Either `messages` or `prompt` is required.');
+    throw new BadRequestException('Either `messages` or `prompt` is required.');
   }
 }

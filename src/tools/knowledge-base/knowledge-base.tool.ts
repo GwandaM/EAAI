@@ -1,10 +1,10 @@
-import { tool } from 'ai';
 import { z } from 'zod';
 
 import type {
   KnowledgeBaseRetrieveOutput,
   KnowledgeBaseService,
 } from './knowledge-base.service';
+import { defineAgentTool } from '../ai-tool';
 import { wrapToolResult, type ToolOutcome } from '../tool-result';
 
 const inputSchema = z.object({
@@ -25,9 +25,7 @@ type Input = z.infer<typeof inputSchema>;
 type Output = ToolOutcome<KnowledgeBaseRetrieveOutput>;
 
 export function buildKnowledgeBaseTool(service: KnowledgeBaseService) {
-  // Explicit <Input, Output> bypasses ai SDK v5's FlexibleSchema union inference,
-  // which can blow the TS recursion limit on richer zod schemas.
-  return tool<Input, Output>({
+  return defineAgentTool<Input, Output>({
     description:
       'Search internal Bedrock Knowledge Base documents and return matching document paragraphs with source metadata. Use when the user asks about internal company knowledge, policies, or documentation.',
     inputSchema,
