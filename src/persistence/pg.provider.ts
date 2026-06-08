@@ -27,12 +27,23 @@ export const pgPoolProvider: Provider = {
       return null;
     }
 
-    logger.log('PostgreSQL pool initialized.');
+    // Managed/serverless Postgres (Neon, Supabase, RDS) requires TLS and can be
+    // slow to accept the first connection (cold start), so enable SSL when the
+    // URL asks for it and give the initial connect a generous timeout. These
+    // providers use publicly-trusted certs, so we keep certificate verification
+    // ON (do not set rejectUnauthorized:false — that would allow MITM).
+    const needsSsl = /sslmode=require/i.test(url) || /\.neon\.tech/i.test(url);
+
+    logger.log(
+      `PostgreSQL pool initialized${needsSsl ? ' (SSL enabled)' : ''}.`,
+    );
     return new pg.Pool({
       connectionString: url,
+      ssl: needsSsl ? { rejectUnauthorized: true } : undefined,
       max: 10,
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 15_000,
+      keepAlive: true,
     });
   },
 };

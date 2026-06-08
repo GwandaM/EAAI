@@ -22,14 +22,14 @@ export class AgentController {
 
   @Post('chat')
   @HttpCode(HttpStatus.OK)
-  chat(
+  async chat(
     @Body() body: ChatRequestDto,
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: false }) res: Response,
-  ): void {
+  ): Promise<void> {
     if (!body.messages?.length && !body.prompt) {
       throw new BadRequestException('Either `messages` or `prompt` is required.');
     }
-    this.agent.streamChat(body, user, res);
+    await this.agent.streamChat(body, user, res);
   }
 }

@@ -1,8 +1,16 @@
 'use client';
 
 import { DefaultChatTransport } from 'ai';
-import { ArrowUp, Bot, Loader2, SquarePen, UserRound } from 'lucide-react';
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowUp,
+  Bot,
+  Loader2,
+  MessageSquare,
+  SquarePen,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '@ai-sdk/react';
@@ -13,7 +21,13 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
-import { createConversation, getConversation } from '@/lib/history';
+import {
+  createConversation,
+  deleteConversation,
+  getConversation,
+  listConversations,
+  type ConversationSummary,
+} from '@/lib/history';
 import { cn } from '@/lib/utils';
 
 // Change this value if the backend is hosted elsewhere.
@@ -22,6 +36,11 @@ const CHAT_API_ENDPOINT = process.env.NEXT_PUBLIC_CHAT_API_URL ?? '/api/chat';
 
 // Where we remember the active conversation across page refreshes.
 const CONVERSATION_STORAGE_KEY = 'eaai.conversationId';
+
+function titleFromText(text: string): string {
+  const trimmed = text.trim().replace(/\s+/g, ' ');
+  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed;
+}
 
 function ThinkingIndicator() {
   return (
@@ -45,6 +64,7 @@ function AssistantAvatar() {
 export default function Page() {
   const [input, setInput] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const transport = useMemo(
@@ -59,80 +79,154 @@ export default function Page() {
   const isGenerating = status === 'submitted' || status === 'streaming';
   const hasMessages = messages.length > 0;
 
-  // On first load, restore the saved conversation (so a refresh keeps history)
-  // or create a fresh one. Persistence is best-effort: if history is disabled
-  // server-side, the chat still works ephemerally.
+  const refreshConversations = useCallback(async () => {
+    setConversations(await listConversations());
+  }, []);
+
+  function hydrate(id: string, msgs: { id: string; role: string; parts: unknown[] }[]) {
+    setConversationId(id);
+    window.localStorage.setItem(CONVERSATION_STORAGE_KEY, id);
+    setMessages(
+      msgs.map((m) => ({ id: m.id, role: m.role, parts: m.parts })) as typeof messages,
+    );
+  }
+
+  // On first load, list conversations and restore the last one (if any).
   useEffect(() => {
     let cancelled = false;
-
     async function bootstrap() {
-      const savedId =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem(CONVERSATION_STORAGE_KEY)
-          : null;
-
+      await refreshConversations();
+      const savedId = window.localStorage.getItem(CONVERSATION_STORAGE_KEY);
       if (savedId) {
         const conversation = await getConversation(savedId);
-        if (cancelled) return;
-        if (conversation) {
-          setConversationId(conversation.id);
-          setMessages(
-            conversation.messages.map((m) => ({
-              id: m.id,
-              role: m.role,
-              parts: m.parts,
-            })) as typeof messages,
-          );
-          return;
+        if (!cancelled && conversation) {
+          hydrate(conversation.id, conversation.messages);
         }
       }
-
-      const created = await createConversation();
-      if (cancelled || !created) return;
-      window.localStorage.setItem(CONVERSATION_STORAGE_KEY, created.id);
-      setConversationId(created.id);
     }
-
     void bootstrap();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshConversations]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, status]);
 
-  async function startNewChat() {
-    if (isGenerating) {
-      return;
-    }
-    const created = await createConversation();
+  function startNewChat() {
+    if (isGenerating) return;
     setMessages([]);
-    if (created) {
-      window.localStorage.setItem(CONVERSATION_STORAGE_KEY, created.id);
-      setConversationId(created.id);
+    setConversationId(null);
+    window.localStorage.removeItem(CONVERSATION_STORAGE_KEY);
+  }
+
+  async function openConversation(id: string) {
+    if (isGenerating || id === conversationId) return;
+    const conversation = await getConversation(id);
+    if (conversation) {
+      hydrate(conversation.id, conversation.messages);
     }
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function removeConversation(id: string) {
+    await deleteConversation(id);
+    if (id === conversationId) {
+      startNewChat();
+    }
+    await refreshConversations();
+  }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     const text = input.trim();
-    if (!text || isGenerating) {
-      return;
+    if (!text || isGenerating) return;
+
+    // Lazily create a titled conversation on the first message of a new chat.
+    let id = conversationId;
+    if (!id) {
+      const created = await createConversation(titleFromText(text));
+      if (created) {
+        id = created.id;
+        setConversationId(created.id);
+        window.localStorage.setItem(CONVERSATION_STORAGE_KEY, created.id);
+        void refreshConversations();
+      }
     }
 
-    sendMessage(
-      { text },
-      conversationId ? { body: { conversationId } } : undefined,
-    );
+    sendMessage({ text }, id ? { body: { conversationId: id } } : undefined);
     setInput('');
   }
 
   return (
-    <main className="flex min-h-screen bg-background text-foreground">
+    <main className="flex h-screen bg-background text-foreground">
+      {/* Conversation history sidebar */}
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-card md:flex">
+        <div className="flex items-center justify-between border-b border-border px-4 py-4">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+            History
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={startNewChat}
+            disabled={isGenerating}
+          >
+            <SquarePen className="h-4 w-4" aria-hidden="true" />
+            New
+          </Button>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-1 p-2">
+            {conversations.length === 0 ? (
+              <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                No conversations yet.
+              </p>
+            ) : (
+              conversations.map((c) => {
+                const active = c.id === conversationId;
+                return (
+                  <div
+                    key={c.id}
+                    className={cn(
+                      'group flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
+                      active
+                        ? 'bg-secondary text-secondary-foreground'
+                        : 'hover:bg-secondary/60',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openConversation(c.id)}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <MessageSquare
+                        className="h-4 w-4 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">
+                        {c.title ?? 'New conversation'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeConversation(c.id)}
+                      aria-label="Delete conversation"
+                      className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </ScrollArea>
+      </aside>
+
+      {/* Chat column */}
       <section className="mx-auto flex w-full max-w-5xl flex-col px-4 py-5 sm:px-6 lg:px-8">
         <header className="mb-5 flex items-center justify-between border-b border-border/70 pb-4">
           <div>
@@ -157,6 +251,7 @@ export default function Page() {
               size="sm"
               onClick={startNewChat}
               disabled={isGenerating}
+              className="md:hidden"
             >
               <SquarePen className="h-4 w-4" aria-hidden="true" />
               New chat

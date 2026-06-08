@@ -14,6 +14,11 @@ const envSchema = z.object({
     .min(1)
     .default('KB_PLACEHOLDER_ID'),
 
+  // Override the Bedrock model id. Required as a cross-region *inference profile*
+  // id in many regions (e.g. eu.anthropic.… in eu-*, us.anthropic.… in us-*),
+  // where the bare model id is rejected as "invalid model identifier".
+  BEDROCK_MODEL_ID: z.string().min(1).optional(),
+
   COMPANY_API_BASE_URL: z
     .string()
     .url('COMPANY_API_BASE_URL must be a valid URL.')

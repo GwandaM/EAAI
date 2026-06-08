@@ -47,7 +47,7 @@ export function buildAppConfig(env: ValidatedEnv): AppConfig {
       sessionToken: env.AWS_SESSION_TOKEN,
     },
     bedrock: {
-      modelId: BEDROCK_MODEL_ID,
+      modelId: env.BEDROCK_MODEL_ID ?? BEDROCK_MODEL_ID,
       knowledgeBaseId: env.BEDROCK_KNOWLEDGE_BASE_ID,
     },
     companyApi: {

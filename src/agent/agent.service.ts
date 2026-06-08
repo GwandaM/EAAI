@@ -67,15 +67,24 @@ export class AgentService {
     private readonly history: HistoryService,
   ) {}
 
-  streamChat(request: ChatRequestDto, user: AuthenticatedUser, res: Response): void {
-    const messages = this.normalizeMessages(request);
+  async streamChat(
+    request: ChatRequestDto,
+    user: AuthenticatedUser,
+    res: Response,
+  ): Promise<void> {
+    // Capture the user's parts BEFORE normalizeMessages: convertToModelMessages
+    // mutates request.messages in place, which would otherwise leave us
+    // persisting emptied-out parts.
+    const conversationId = request.conversationId;
+    const userPartsToPersist = conversationId ? this.userParts(request) : [];
+
+    const messages = await this.normalizeMessages(request);
     this.logger.log(`Chat request from user ${user.userId}`);
 
     // Persist the user's turn before streaming. Best-effort: a history failure
     // must never block the chat response.
-    const conversationId = request.conversationId;
     if (conversationId) {
-      void this.persist(user.userId, conversationId, 'user', this.userParts(request));
+      void this.persist(user.userId, conversationId, 'user', userPartsToPersist);
     }
 
     const result = streamTextLoose({
@@ -112,11 +121,13 @@ export class AgentService {
     });
   }
 
-  /** The parts of the user's latest turn, for persistence. */
+  /** The parts of the user's latest turn, for persistence (detached copy). */
   private userParts(request: ChatRequestDto): unknown[] {
     if (request.messages && request.messages.length > 0) {
       const last = request.messages[request.messages.length - 1];
-      return last.parts ?? [];
+      // Deep-clone so later in-place mutation of request.messages can't corrupt
+      // what we persist.
+      return last.parts ? structuredClone(last.parts) : [];
     }
     if (request.prompt) {
       return [{ type: 'text', text: request.prompt }];
@@ -155,13 +166,16 @@ export class AgentService {
     }
   }
 
-  private normalizeMessages(request: ChatRequestDto): unknown[] {
+  private async normalizeMessages(request: ChatRequestDto): Promise<unknown[]> {
     if (request.messages && request.messages.length > 0) {
+      // convertToModelMessages is async in ai@6 (it was sync in v5). Awaiting it
+      // is essential — otherwise streamText receives a Promise and fails with
+      // "messages.some is not a function".
       const convertMessages = convertToModelMessages as unknown as (
         messages: unknown[],
-      ) => unknown[];
+      ) => Promise<unknown[]>;
       try {
-        return convertMessages(request.messages);
+        return await convertMessages(request.messages);
       } catch (error) {
         // The DTO only checks that `parts` is an array; convertToModelMessages does
         // the semantic validation. A structurally-valid-but-malformed payload is a

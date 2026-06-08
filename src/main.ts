@@ -41,7 +41,8 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: false,
       transform: true,
-      transformOptions: { enableImplicitConversion: true },
+      // NOTE: do not enable implicit conversion — it coerces the chat DTO's
+      // arbitrary `parts` objects into `[]`, corrupting model input and history.
     }),
   );
 

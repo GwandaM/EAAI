@@ -40,7 +40,6 @@ describeOrSkip('Bedrock integration (real AWS)', () => {
       new ValidationPipe({
         whitelist: true,
         transform: true,
-        transformOptions: { enableImplicitConversion: true },
       }),
     );
     await app.listen(0, '127.0.0.1');

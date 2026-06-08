@@ -1,0 +1,152 @@
+{
+  "completedAt": "2026-06-08T19:25:55.603Z",
+  "downloaded": 270,
+  "dryRun": false,
+  "failedPages": [
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/vitality"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/vitality/discoveryvitality-shoe-donations"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/vitality/sleep-rewardss"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/'/wcm/discoverycoza/images/bank/leads-pages/leads-banner-alt.jpg'"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/medical-aid/digital-form-health-declaration"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/styles.7037c336fc8a5c07f1c2.css"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/favicon.ico"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/runtime-es2015.23287df8e187f03402aa.js"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/runtime-es5.23287df8e187f03402aa.js"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/main-es5.73f2b08618bf4180458c.js"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/polyfills-es2015.f9b3e78a012320e4d1f7.js"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/polyfills-es5.7195e5cb6c8ffde9efc1.js"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/main-es2015.73f2b08618bf4180458c.js"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/'/wcm/discoverycoza/images/bank/leads-pages/leads-banner.jpg'"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/savings-comparison-landing"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-old-school-campaign-get-discovery-miles-back"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-vitality-fitness-special-offer"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-travis-scott-live-in-SA"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-invest-r5-in-your-financial-future"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-michael-flatley-show"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-tems-concert"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-robbie-williams-pretoria-show"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-lauren-daigle-concerts"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-roxette-tour"
+    },
+    {
+      "error": "HTTP 404",
+      "url": "https://www.discovery.co.za/bank/news-sting-3.0-tour"
+    }
+  ],
+  "failedPdfs": [
+    {
+      "error": "HTTP 500",
+      "url": "https://www.discovery.co.za/wcm/discoverycoza/assets/bank/join-discovery-bank-ts-cs.pdf",
+      "discoveredOn": "https://www.discovery.co.za/bank/join-discovery-bank"
+    },
+    {
+      "error": "fetch failed",
+      "url": "https://cdn.discovery.co.za/assets/cdn-content/public/documents/investments/discovery-invest-newsletter-10th-edition.pdf",
+      "discoveredOn": "https://www.discovery.co.za/investments/retirement-education"
+    },
+    {
+      "error": "HTTP 500",
+      "url": "https://www.discovery.co.za/wcm/discoverycoza/assets/car-and-home-insurance/vitalitydrive/vitality-drive-ts-cs.pdf",
+      "discoveredOn": "https://www.discovery.co.za/car-and-home-insurance/get-a-car-insurance-quote"
+    },
+    {
+      "error": "HTTP 500",
+      "url": "https://www.discovery.co.za/assets/discoverycoza/financial-advisers-zone/insurance/get-up-to-50-of-your-bp-fuel-spend-back.pdf",
+      "discoveredOn": "https://www.discovery.co.za/car-and-home-insurance/faqs"
+    },
+    {
+      "error": "HTTP 500",
+      "url": "https://www.discovery.co.za/assets/template-resources/business-insurance/business-travel-global-data.pdf",
+      "discoveredOn": "https://www.discovery.co.za/business/business-travel-insurance"
+    },
+    {
+      "error": "HTTP 500",
+      "url": "https://www.discovery.co.za/assets/discoverycoza/bank/legal/rewards-terms-and-conditions.pdf",
+      "discoveredOn": "https://www.discovery.co.za/bank/info-and-tips-contacting-discovery-bank"
+    },
+    {
+      "error": "HTTP 500",
+      "url": "https://www.discovery.co.za/assets/discoverycoza/bank/legal/weekly-twitter-competition-ts-and-cs-28-feb-updated.pdf",
+      "discoveredOn": "https://www.discovery.co.za/bank/info-and-tips-contacting-discovery-bank"
+    }
+  ],
+  "matchedPdfs": 476,
+  "outputDirectory": "data/discovery-pdfs",
+  "pagesCrawled": 372,
+  "pagesRequested": 400,
+  "pagesQueuedButNotCrawled": 625,
+  "stoppedByLimit": true,
+  "stoppedByPdfLimit": false,
+  "totalManifestRecords": 469
+}

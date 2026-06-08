@@ -20,6 +20,21 @@ export interface Conversation extends ConversationSummary {
 
 const HISTORY_BASE = '/api/history';
 
+export async function listConversations(): Promise<ConversationSummary[]> {
+  const res = await fetch(`${HISTORY_BASE}/conversations`);
+  if (!res.ok) {
+    return [];
+  }
+  return (await res.json()) as ConversationSummary[];
+}
+
+export async function deleteConversation(id: string): Promise<boolean> {
+  const res = await fetch(`${HISTORY_BASE}/conversations/${id}`, {
+    method: 'DELETE',
+  });
+  return res.ok;
+}
+
 export async function createConversation(
   title?: string,
 ): Promise<ConversationSummary | null> {

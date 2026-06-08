@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.29.2",
   "description": "Enterprise AI Agent backend (NestJS + Vercel AI SDK + AWS Bedrock Claude 3.5 Sonnet).",
   "scripts": {
+    "dev": "node scripts/dev.mjs",
     "build": "nest build",
     "frontend:build": "pnpm --filter enterprise-ai-agent-frontend build",
     "frontend:dev": "pnpm --filter enterprise-ai-agent-frontend dev",
@@ -15,6 +16,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "smoke:prod": "node scripts/smoke-prod.mjs",
+    "download:discovery-pdfs": "node scripts/download-discovery-pdfs.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
