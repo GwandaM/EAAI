@@ -25,7 +25,12 @@ const envSchema = z.object({
     .default('https://api.company.com'),
   COMPANY_API_TOKEN: z.string().min(1).optional(),
 
-  DATABASE_URL: z.string().min(1).optional(),
+  // Treat an empty string the same as unset (history disabled, mock sales data),
+  // so `DATABASE_URL=` doesn't fail validation or trigger a doomed connection.
+  DATABASE_URL: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 
   // Comma-separated list of allowed CORS origins. If unset, cross-origin requests
   // are reflected only in development; in production they are denied unless listed.

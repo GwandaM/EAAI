@@ -10,29 +10,39 @@ using the **UI Message Stream protocol** so a `useChat()` frontend renders token
 calls incrementally. Three live tools: Bedrock Knowledge Base retriever, a Company REST API,
 and a PostgreSQL sales query.
 
-This is a **pnpm workspace**. The NestJS backend is the root package; the Next.js frontend
-lives in `frontend/` (separate package `enterprise-ai-agent-frontend`).
+This is a **pnpm workspace** with two packages: the NestJS backend in `backend/`
+(`enterprise-ai-agent-backend`) and the Next.js frontend in `frontend/`
+(`enterprise-ai-agent-frontend`). The repo root is a pure orchestrator (no source),
+holding `pnpm-workspace.yaml`, `docker-compose.yml`, `scripts/`, and a root
+`package.json` whose scripts proxy into the packages via `pnpm --filter`.
 
 ## Commands
 
-Backend (run from repo root):
+Run both servers together (backend `:3000` + frontend `:3001`, wired via `scripts/dev.mjs`):
+
+```bash
+pnpm run dev
+```
+
+Backend (root scripts proxy to the `backend` package via `--filter`):
 
 ```bash
 pnpm install                # install all workspace deps
 pnpm run start:dev          # NestJS watch mode (http://localhost:3000)
-pnpm run build              # nest build -> dist/
-pnpm run start:prod         # node dist/main.js
+pnpm run build              # nest build -> backend/dist/
+pnpm run start:prod         # node backend/dist/main.js
 pnpm run typecheck          # tsc --noEmit
 pnpm run lint               # eslint {src,test}/**/*.ts --fix
-pnpm run format             # prettier --write
-pnpm test                   # jest (unit, *.spec.ts under src/)
-pnpm run test:e2e           # jest --config test/jest-e2e.json
+pnpm test                   # jest (unit, *.spec.ts under backend/src/)
+pnpm run test:e2e           # jest --config backend/test/jest-e2e.json
+pnpm run test:bedrock       # gated real-Bedrock integration test (needs RUN_BEDROCK_INTEGRATION=true + AWS creds)
 pnpm run smoke:prod         # scripts/smoke-prod.mjs — hits /health + frontend proxy
 ```
 
-Run a single test:
+Run a single test (from `backend/`, so Jest arg pass-through is clean):
 
 ```bash
+cd backend
 pnpm test -- src/tools/database/database.service.spec.ts   # one file
 pnpm test -- -t "falls back to mock"                       # by test name
 ```
@@ -46,13 +56,11 @@ pnpm run frontend:lint
 pnpm run frontend:typecheck
 ```
 
-To run both locally, set the proxy target so the Next API route forwards to Nest:
-
-```bash
-BACKEND_CHAT_URL=http://127.0.0.1:3000/agent/chat pnpm run frontend:dev -- --hostname 127.0.0.1 --port 3001
-```
+`pnpm run dev` already wires `BACKEND_CHAT_URL` so the Next API route forwards to Nest.
 
 Docker: `docker compose up --build` brings up Postgres (with healthcheck) + the app on `:3000`.
+The build context is the repo root with `dockerfile: backend/Dockerfile` (a pnpm-workspace
+build using `pnpm deploy`). Env comes from `backend/.env`.
 
 ## Architecture
 

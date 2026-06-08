@@ -14,6 +14,9 @@ describe('App e2e', () => {
       process.env.COMPANY_API_BASE_URL ?? 'https://api.company.test';
     // Bypass JWT verification for e2e; the guard itself is unit-tested separately.
     process.env.AUTH_DISABLED = 'true';
+    // Keep this e2e hermetic: don't connect to a real DB at boot (an empty value
+    // is treated as "unset", so history is disabled and startup stays fast).
+    process.env.DATABASE_URL = '';
 
     const { AppModule } = await import('../src/app.module');
 

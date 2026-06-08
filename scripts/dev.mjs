@@ -47,7 +47,11 @@ console.log(
   `[dev] backend → http://127.0.0.1:${BACKEND_PORT}  |  frontend → http://127.0.0.1:${FRONTEND_PORT}`,
 );
 
-run('backend', 'pnpm', ['run', 'start:dev']);
+run('backend', 'pnpm', [
+  '--filter',
+  'enterprise-ai-agent-backend',
+  'start:dev',
+]);
 run(
   'frontend',
   'pnpm',
