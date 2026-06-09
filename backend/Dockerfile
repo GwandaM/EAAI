@@ -6,18 +6,16 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies first (better layer caching).
-RUN corepack enable && corepack prepare pnpm@10.29.2 --activate
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY frontend/package.json ./frontend/package.json
-RUN pnpm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy sources and build.
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
 COPY src ./src
-RUN pnpm run build
+RUN npm run build
 
 # Prune dev deps for a lean runtime layer.
-RUN pnpm prune --prod
+RUN npm prune --omit=dev
 
 
 # -------- Stage 2: runtime --------
