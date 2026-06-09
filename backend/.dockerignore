@@ -7,8 +7,6 @@ coverage
 .env.*
 !.env.example
 Dockerfile
-docker-compose.yml
-README.md
 *.log
 .DS_Store
 .vscode
