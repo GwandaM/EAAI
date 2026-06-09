@@ -1,0 +1,22 @@
+**/node_modules
+**/dist
+**/.next
+coverage
+.git
+.gitignore
+<<<<<<< HEAD:.dockerignore
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+=======
+.env
+.env.*
+!.env.example
+Dockerfile
+*.log
+>>>>>>> 651a0558592feb65a9df8327110da0226de684ef:backend/.dockerignore
+.DS_Store
+.vscode
+.idea
+data

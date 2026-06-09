@@ -2,14 +2,18 @@
   "name": "enterprise-ai-agent",
   "version": "1.0.0",
   "private": true,
+<<<<<<< HEAD
   "packageManager": "npm@10.7.0",
   "description": "Enterprise AI Agent — npm workspace (NestJS backend + Next.js frontend).",
+=======
+>>>>>>> 651a0558592feb65a9df8327110da0226de684ef
   "workspaces": [
     "backend",
     "frontend"
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
+<<<<<<< HEAD
     "build": "npm run build -w enterprise-ai-agent-backend",
     "start": "npm run start -w enterprise-ai-agent-backend",
     "start:dev": "npm run start:dev -w enterprise-ai-agent-backend",
@@ -27,6 +31,21 @@
     "frontend:dev": "npm run dev -w enterprise-ai-agent-frontend",
     "frontend:lint": "npm run lint -w enterprise-ai-agent-frontend",
     "frontend:typecheck": "npm run typecheck -w enterprise-ai-agent-frontend",
+=======
+    "backend:build": "npm run build -w backend",
+    "backend:dev": "npm run start:dev -w backend",
+    "backend:start": "npm run start:prod -w backend",
+    "backend:test": "npm test -w backend",
+    "backend:test:e2e": "npm run test:e2e -w backend",
+    "backend:lint": "npm run lint -w backend",
+    "backend:typecheck": "npm run typecheck -w backend",
+    "backend:format": "npm run format -w backend",
+    "frontend:build": "npm run build -w frontend",
+    "frontend:dev": "npm run dev -w frontend",
+    "frontend:start": "npm run start -w frontend",
+    "frontend:lint": "npm run lint -w frontend",
+    "frontend:typecheck": "npm run typecheck -w frontend",
+>>>>>>> 651a0558592feb65a9df8327110da0226de684ef
     "smoke:prod": "node scripts/smoke-prod.mjs",
     "download:discovery-pdfs": "node scripts/download-discovery-pdfs.mjs"
   }
