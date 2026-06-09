@@ -181,7 +181,7 @@ function printHelp() {
 Download public Discovery product PDF brochures for knowledge-base ingestion.
 
 Usage:
-  pnpm run download:discovery-pdfs -- [options]
+  npm run download:discovery-pdfs -- [options]
   node scripts/download-discovery-pdfs.mjs [options]
 
 Options:
@@ -204,10 +204,10 @@ Options:
   -h, --help           Show this help.
 
 Examples:
-  pnpm run download:discovery-pdfs
-  pnpm run download:discovery-pdfs -- --all-pdfs --out knowledge-base/discovery
-  pnpm run download:discovery-pdfs -- --dry-run --max-pages 50
-  pnpm run download:discovery-pdfs -- --max-pages 150 --max-depth 2
+  npm run download:discovery-pdfs
+  npm run download:discovery-pdfs -- --all-pdfs --out knowledge-base/discovery
+  npm run download:discovery-pdfs -- --dry-run --max-pages 50
+  npm run download:discovery-pdfs -- --max-pages 150 --max-depth 2
 `);
 }
 

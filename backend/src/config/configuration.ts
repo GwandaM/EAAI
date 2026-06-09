@@ -21,6 +21,13 @@ export interface AppConfig {
   database: {
     url?: string;
   };
+  oracle: {
+    user?: string;
+    password?: string;
+    connectString?: string;
+    tnsAdmin?: string;
+    schema?: string;
+  };
   auth: {
     disabled: boolean;
     jwksUri?: string;
@@ -29,7 +36,7 @@ export interface AppConfig {
   };
 }
 
-export const BEDROCK_MODEL_ID = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+export const BEDROCK_MODEL_ID = 'eu.anthropic.claude-3-5-sonnet-20241022-v2:0';
 
 export function buildAppConfig(env: ValidatedEnv): AppConfig {
   return {
@@ -56,6 +63,13 @@ export function buildAppConfig(env: ValidatedEnv): AppConfig {
     },
     database: {
       url: env.DATABASE_URL,
+    },
+    oracle: {
+      user: env.ORACLE_USER,
+      password: env.ORACLE_PASSWORD,
+      connectString: env.ORACLE_CONNECT_STRING,
+      tnsAdmin: env.ORACLE_TNS_ADMIN,
+      schema: env.ORACLE_SCHEMA,
     },
     auth: {
       disabled: env.AUTH_DISABLED,

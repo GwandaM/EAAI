@@ -9,9 +9,9 @@ import { Test } from '@nestjs/testing';
  *   RUN_BEDROCK_INTEGRATION=true \
  *   AWS_REGION=us-east-1 \
  *   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
- *   pnpm run test:bedrock
+   *   npm run test:bedrock
  *
- * Or simply `pnpm run test:bedrock` if your environment already has AWS creds
+   * Or simply `npm run test:bedrock` if your environment already has AWS creds
  * on the standard credential chain.
  */
 const ENABLED = process.env.RUN_BEDROCK_INTEGRATION === 'true';
@@ -69,20 +69,20 @@ describeOrSkip('Bedrock integration (real AWS)', () => {
     expect(body.toLowerCase()).toContain('finish');
   }, 60_000);
 
-  it('invokes a tool when asked for sales data and still finishes the stream', async () => {
+  it('invokes a business tool when asked for policy data and still finishes the stream', async () => {
     const response = await fetch(`${baseUrl}/agent/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        prompt: 'What were EMEA sales between 2026-01-01 and 2026-03-31?',
+        prompt: 'Look up policy POL-TEST-1 using the Policy Service.',
       }),
     });
 
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain('data:');
-    // querySalesPerformance returns mock rows without DATABASE_URL, but the tool
-    // call itself should appear in the stream.
+    // The upstream business API may not contain this test policy, but the stream
+    // should still finish cleanly after the model handles the tool result.
     expect(body.toLowerCase()).toContain('finish');
   }, 60_000);
 });

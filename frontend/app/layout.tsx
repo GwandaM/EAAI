@@ -3,8 +3,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Enterprise AI Agent',
-  description: 'Executive chat interface for the Enterprise AI Agent.',
+  title: 'Invest Broker Agent',
+  description: 'Broker chat interface for policy, party, and knowledge-base questions.',
 };
 
 export default function RootLayout({

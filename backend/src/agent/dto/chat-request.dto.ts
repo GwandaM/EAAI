@@ -43,13 +43,6 @@ export class ChatRequestDto {
   @MinLength(1)
   prompt?: string;
 
-  /**
-   * Optional system prompt override. The default in AgentService is used if absent.
-   */
-  @IsOptional()
-  @IsString()
-  system?: string;
-
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;

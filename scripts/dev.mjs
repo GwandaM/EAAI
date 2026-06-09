@@ -1,5 +1,5 @@
 // Run the NestJS backend (watch mode) and the Next.js frontend together.
-// Usage: pnpm run dev
+// Usage: npm run dev
 import { spawn } from 'node:child_process';
 
 const BACKEND_PORT = process.env.PORT ?? '3000';
@@ -47,20 +47,21 @@ console.log(
   `[dev] backend → http://127.0.0.1:${BACKEND_PORT}  |  frontend → http://127.0.0.1:${FRONTEND_PORT}`,
 );
 
-run('backend', 'pnpm', [
-  '--filter',
-  'enterprise-ai-agent-backend',
+run('backend', 'npm', [
+  'run',
   'start:dev',
+  '-w',
+  'enterprise-ai-agent-backend',
 ]);
 run(
   'frontend',
-  'pnpm',
+  'npm',
   [
-    '--filter',
-    'enterprise-ai-agent-frontend',
-    'exec',
-    'next',
+    'run',
     'dev',
+    '-w',
+    'enterprise-ai-agent-frontend',
+    '--',
     '--hostname',
     '127.0.0.1',
     '--port',

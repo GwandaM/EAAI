@@ -231,10 +231,10 @@ export default function Page() {
         <header className="mb-5 flex items-center justify-between border-b border-border/70 pb-4">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Enterprise AI
+              Invest Broker
             </p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-              Executive Agent
+              Broker Agent
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -271,11 +271,11 @@ export default function Page() {
                       </AvatarFallback>
                     </Avatar>
                     <h2 className="text-2xl font-semibold tracking-tight">
-                      Ask about sales, products, policies, or internal knowledge.
+                      Ask about policies, clients, broker summaries, or internal knowledge.
                     </h2>
                     <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      Responses stream from the Enterprise AI Agent and can
-                      include citations or tool-backed context from your backend.
+                      Responses stream from the Invest Broker Agent with citations
+                      from policy, party, and knowledge-base tools.
                     </p>
                   </div>
                 </div>
@@ -328,7 +328,7 @@ export default function Page() {
                                 key={`${message.id}-${index}`}
                                 className="text-xs font-medium text-muted-foreground"
                               >
-                                Consulting enterprise data...
+                                Consulting broker data...
                               </div>
                             );
                           })}
@@ -385,7 +385,7 @@ export default function Page() {
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
-                placeholder="Ask the agent..."
+                placeholder="Ask the broker agent..."
                 rows={1}
                 className="max-h-40 min-h-11 flex-1 resize-none"
               />

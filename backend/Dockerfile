@@ -7,20 +7,15 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@10.29.2 --activate
-
 # Install workspace deps first (better layer caching). Copy only manifests.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json package-lock.json ./
 COPY backend/package.json ./backend/package.json
 COPY frontend/package.json ./frontend/package.json
-RUN pnpm install --frozen-lockfile
+RUN npm ci
 
 # Build the backend.
 COPY backend ./backend
-RUN pnpm --filter enterprise-ai-agent-backend build
-
-# Produce a pruned, self-contained deployment of just the backend (dist + prod deps).
-RUN pnpm --filter enterprise-ai-agent-backend deploy --prod /prod/backend
+RUN npm run build -w enterprise-ai-agent-backend
 
 
 # -------- Stage 2: runtime --------
@@ -29,13 +24,16 @@ FROM node:20-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY --from=builder /prod/backend/node_modules ./node_modules
-COPY --from=builder /prod/backend/dist ./dist
-COPY --from=builder /prod/backend/package.json ./package.json
+COPY package.json package-lock.json ./
+COPY backend/package.json ./backend/package.json
+COPY frontend/package.json ./frontend/package.json
+RUN npm ci --omit=dev --workspace=enterprise-ai-agent-backend --include-workspace-root=false
+
+COPY --from=builder /app/backend/dist ./backend/dist
 
 # Drop privileges. The 'node' user is preinstalled in the official image.
 USER node
 
 EXPOSE 3000
 
-CMD ["node", "dist/main.js"]
+CMD ["node", "backend/dist/main.js"]

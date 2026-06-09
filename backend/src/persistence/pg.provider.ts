@@ -8,8 +8,8 @@ export const PG_POOL = Symbol('PG_POOL');
 
 /**
  * The shared connection pool, or `null` when DATABASE_URL is unset. A null pool
- * is a first-class state: the database tool falls back to mock data and history
- * persistence is disabled, so the app still runs without Postgres.
+ * is a first-class state: history persistence is disabled, so the app still
+ * runs without Postgres.
  */
 export type PgPool = pg.Pool | null;
 
@@ -22,7 +22,7 @@ export const pgPoolProvider: Provider = {
 
     if (!url) {
       logger.warn(
-        'DATABASE_URL not set — sales tool returns mock data and chat history is disabled.',
+        'DATABASE_URL not set — chat history is disabled.',
       );
       return null;
     }

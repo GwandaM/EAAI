@@ -53,17 +53,17 @@ async function bootstrap() {
   const port = config.get('port', { infer: true });
 
   await app.listen(port);
-  logger.log(`Enterprise AI Agent backend listening on http://localhost:${port}`);
+  logger.log(`Invest Broker Agent backend listening on http://localhost:${port}`);
   logger.log('POST /agent/chat — streams UI Message events for Vercel AI SDK useChat().');
 }
 
 process.on('unhandledRejection', (reason) => {
-  // eslint-disable-next-line no-console
+   
   console.error('[unhandledRejection]', reason);
 });
 
 bootstrap().catch((error) => {
-  // eslint-disable-next-line no-console
+   
   console.error('Fatal bootstrap error:', error);
   process.exit(1);
 });

@@ -13,21 +13,25 @@ import type { Response } from 'express';
 
 import { BEDROCK_MODEL } from '../llm/bedrock.provider';
 import { HistoryService } from '../persistence/history.service';
-import { CompanyApiService } from '../tools/company-api/company-api.service';
-import { buildCompanyApiTool } from '../tools/company-api/company-api.tool';
-import { DatabaseService } from '../tools/database/database.service';
-import { buildDatabaseTool } from '../tools/database/database.tool';
+import { buildAgentTools } from '../tools/agent-tools';
 import { KnowledgeBaseService } from '../tools/knowledge-base/knowledge-base.service';
-import { buildKnowledgeBaseTool } from '../tools/knowledge-base/knowledge-base.tool';
+import { PolicyService } from '../tools/policy/policy.service';
+import { PartyService } from '../tools/party/party.service';
+import type { BusinessToolContext } from '../tools/business-api/business-tool-context';
 
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import type { ChatRequestDto } from './dto/chat-request.dto';
 
-const DEFAULT_SYSTEM_PROMPT = `You are an enterprise AI agent assisting employees.
-Use tools whenever current company facts, internal documents, pricing, sales,
-or performance data are needed. Always cite the tool source in your final answer.
-If a tool returns ok=false, explain the limitation and continue with the best
-available answer rather than failing the conversation.`;
+const SYSTEM_PROMPT = `You are the Invest Broker Agent.
+Use the Policy Service tools for policy data, values, performance, withdrawals,
+benefits, special offers, outstanding bills, policy search, and subscriptions.
+Use the Party Service tools for parties, broker details, AUM, commissions,
+broker clients, credit-control counts, and relationship validation. Use
+queryKnowledgeBase for unstructured product, process, or document knowledge.
+Never ask the user for internal database details and never invent policy,
+client, or broker facts without tool support. Always cite the tool source in
+your final answer. If a tool returns ok=false, explain the limitation and
+continue with the best available answer rather than failing the conversation.`;
 
 const MAX_AGENT_STEPS = 5;
 
@@ -62,8 +66,8 @@ export class AgentService {
   constructor(
     @Inject(BEDROCK_MODEL) private readonly model: unknown,
     private readonly knowledgeBase: KnowledgeBaseService,
-    private readonly companyApi: CompanyApiService,
-    private readonly database: DatabaseService,
+    private readonly policy: PolicyService,
+    private readonly party: PartyService,
     private readonly history: HistoryService,
   ) {}
 
@@ -89,13 +93,16 @@ export class AgentService {
 
     const result = streamTextLoose({
       model: this.model,
-      system: request.system ?? DEFAULT_SYSTEM_PROMPT,
+      system: SYSTEM_PROMPT,
       messages,
-      tools: {
-        searchKnowledgeBase: buildKnowledgeBaseTool(this.knowledgeBase),
-        getCompanyProduct: buildCompanyApiTool(this.companyApi),
-        querySalesPerformance: buildDatabaseTool(this.database),
-      },
+      tools: buildAgentTools(
+        {
+          policy: this.policy,
+          party: this.party,
+          knowledgeBase: this.knowledgeBase,
+        },
+        this.toolContext(user),
+      ),
       stopWhen: stepCountIsLoose(MAX_AGENT_STEPS),
       maxRetries: 2,
       onError: ({ error }) => {
@@ -189,5 +196,37 @@ export class AgentService {
       return [{ role: 'user', content: request.prompt }];
     }
     throw new BadRequestException('Either `messages` or `prompt` is required.');
+  }
+
+  private toolContext(user: AuthenticatedUser): BusinessToolContext {
+    return {
+      userId: user.userId,
+      email: user.email,
+      brokerId: this.claimString(user, [
+        'brokerId',
+        'broker_id',
+        'advisorId',
+        'advisor_id',
+        'custom:broker_id',
+        'custom:advisor_id',
+      ]),
+      partyId: this.claimString(user, [
+        'partyId',
+        'party_id',
+        'clientId',
+        'client_id',
+        'custom:party_id',
+      ]),
+    };
+  }
+
+  private claimString(user: AuthenticatedUser, names: string[]): string | undefined {
+    for (const name of names) {
+      const value = user.claims[name];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return undefined;
   }
 }

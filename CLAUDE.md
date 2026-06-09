@@ -4,73 +4,84 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Enterprise AI Agent backend: a NestJS service that exposes `POST /agent/chat`, runs an
+Invest Broker Agent backend: a NestJS service that exposes `POST /agent/chat`, runs an
 agent loop on AWS Bedrock (Claude 3.5 Sonnet) via the Vercel AI SDK, and streams responses
 using the **UI Message Stream protocol** so a `useChat()` frontend renders tokens + tool
-calls incrementally. Three live tools: Bedrock Knowledge Base retriever, a Company REST API,
-and a PostgreSQL sales query.
+calls incrementally. Active model-facing tools are grouped into Policy Service, Party
+Service, and Bedrock Knowledge Base domains. PostgreSQL is used only for
+conversation-history persistence (`persistence/`), not as a model-facing data tool.
 
-This is a **pnpm workspace** with two packages: the NestJS backend in `backend/`
+This is an **npm workspace** with two packages: the NestJS backend in `backend/`
 (`enterprise-ai-agent-backend`) and the Next.js frontend in `frontend/`
 (`enterprise-ai-agent-frontend`). The repo root is a pure orchestrator (no source),
-holding `pnpm-workspace.yaml`, `docker-compose.yml`, `scripts/`, and a root
-`package.json` whose scripts proxy into the packages via `pnpm --filter`.
+holding `docker-compose.yml`, `scripts/`, and a root `package.json` whose scripts
+proxy into the packages via npm workspaces.
 
 ## Commands
 
 Run both servers together (backend `:3000` + frontend `:3001`, wired via `scripts/dev.mjs`):
 
 ```bash
-pnpm run dev
+npm run dev
 ```
 
-Backend (root scripts proxy to the `backend` package via `--filter`):
+Backend (root scripts proxy to the `backend` package via npm workspaces):
 
 ```bash
-pnpm install                # install all workspace deps
-pnpm run start:dev          # NestJS watch mode (http://localhost:3000)
-pnpm run build              # nest build -> backend/dist/
-pnpm run start:prod         # node backend/dist/main.js
-pnpm run typecheck          # tsc --noEmit
-pnpm run lint               # eslint {src,test}/**/*.ts --fix
-pnpm test                   # jest (unit, *.spec.ts under backend/src/)
-pnpm run test:e2e           # jest --config backend/test/jest-e2e.json
-pnpm run test:bedrock       # gated real-Bedrock integration test (needs RUN_BEDROCK_INTEGRATION=true + AWS creds)
-pnpm run smoke:prod         # scripts/smoke-prod.mjs — hits /health + frontend proxy
+npm install                 # install all workspace deps
+npm run start:dev           # NestJS watch mode (http://localhost:3000)
+npm run build               # nest build -> backend/dist/
+npm run start:prod          # node backend/dist/main.js
+npm run typecheck           # tsc --noEmit
+npm run lint                # eslint {src,test}/**/*.ts --fix
+npm test                    # jest (unit, *.spec.ts under backend/src/)
+npm run test:e2e            # jest --config backend/test/jest-e2e.json
+npm run test:bedrock        # gated real-Bedrock integration test (needs RUN_BEDROCK_INTEGRATION=true + AWS creds)
+npm run smoke:prod          # scripts/smoke-prod.mjs — hits /health + frontend proxy
+npm run tools               # tool harness CLI: list | describe <tool> | run <tool> --args '<json>'
 ```
+
+The tool harness CLI (`backend/src/cli/tools-cli.ts`) invokes any model-facing tool
+directly — no model, no HTTP server. It builds tools through the same
+`buildAgentTools` registry (`tools/agent-tools.ts`) the agent uses, validates args
+against the same Zod schemas, and prints the `{ ok, ... }` envelope. `--user/--broker/--party`
+flags set the `BusinessToolContext`. `oracle.query` is exposed here as dev-only and must
+stay out of `buildAgentTools` (no model-facing SQL). Exit codes: 0 ok, 1 failure, 2 usage.
 
 Run a single test (from `backend/`, so Jest arg pass-through is clean):
 
 ```bash
 cd backend
-pnpm test -- src/tools/database/database.service.spec.ts   # one file
-pnpm test -- -t "falls back to mock"                       # by test name
+npm test -- src/tools/policy/policy.tool.spec.ts           # one file
+npm test -- -t "server-side context"                       # by test name
 ```
 
 Frontend (proxied scripts from root, or run inside `frontend/`):
 
 ```bash
-pnpm run frontend:dev       # next dev
-pnpm run frontend:build
-pnpm run frontend:lint
-pnpm run frontend:typecheck
+npm run frontend:dev        # next dev
+npm run frontend:build
+npm run frontend:lint
+npm run frontend:typecheck
 ```
 
-`pnpm run dev` already wires `BACKEND_CHAT_URL` so the Next API route forwards to Nest.
+`npm run dev` already wires `BACKEND_CHAT_URL` so the Next API route forwards to Nest.
 
 Docker: `docker compose up --build` brings up Postgres (with healthcheck) + the app on `:3000`.
-The build context is the repo root with `dockerfile: backend/Dockerfile` (a pnpm-workspace
-build using `pnpm deploy`). Env comes from `backend/.env`.
+The build context is the repo root with `dockerfile: backend/Dockerfile` (an npm-workspace
+build using `npm ci`). Env comes from `backend/.env`.
 
 ## Architecture
 
 Request flow: `agent.controller.ts` (`POST /agent/chat`) → `AgentService.streamChat` →
-`streamText` with the three tools and `stopWhen: stepCountIs(5)` → tool `execute` calls →
+`streamText` with Policy, Party, and `queryKnowledgeBase` tools plus
+`stopWhen: stepCountIs(5)` → tool `execute` calls →
 `pipeUIMessageStreamToResponse(res)` writes SSE-style deltas the frontend `useChat` parses.
 
 Module wiring (`app.module.ts`): `ConfigModule` (global) → `LlmModule` (global) → `ToolsModule`
-→ `AgentModule` → `HealthModule`. Each tool has a paired `*.service.ts` (does the I/O) and
-`*.tool.ts` (Zod schema + AI SDK tool definition); the service is injected into the tool builder.
+→ `AgentModule` → `HealthModule`. Policy/Party tools have paired `*.service.ts` files
+(business API I/O) and `*.tool.ts` files (Zod schema + AI SDK tool definition). The
+`business-api/` client adds authenticated user/broker scope headers to every upstream call.
 
 ### Conventions specific to this codebase
 
@@ -91,11 +102,14 @@ Module wiring (`app.module.ts`): `ConfigModule` (global) → `LlmModule` (global
 - **The Bedrock model is a DI token.** `bedrock.provider.ts` exposes `BEDROCK_MODEL` (a
   `Symbol`) via a `useFactory` provider using `fromNodeProviderChain()` for credentials. Inject
   it with `@Inject(BEDROCK_MODEL)`. The model id is pinned in `configuration.ts`
-  (`BEDROCK_MODEL_ID = anthropic.claude-3-5-sonnet-20241022-v2:0`).
-- **Graceful degradation.** `DatabaseService` works with no `DATABASE_URL` (returns
-  deterministic mock rows) and also falls back to mock if the `sales_performance` table is
-  missing (`42P01`). SQL uses parameterized values; the `metric` column name is injected only
-  after enum validation (defence-in-depth).
+  (`BEDROCK_MODEL_ID = eu.anthropic.claude-3-5-sonnet-20241022-v2:0`).
+- **No model-facing SQL.** The active agent must expose named business tools only. Do not
+  register generic SQL/database/query tools in `AgentService`; add Policy or Party service
+  methods instead so authorization and relationship checks stay behind the business API.
+- **Server-owned prompt and scope.** `ChatRequestDto` does not accept a `system` override.
+  `AgentService` builds `BusinessToolContext` from the authenticated user/JWT claims and passes
+  it into the Policy/Party tool builders. Do not ask the model to provide user, broker, or party
+  scope.
 
 ### Error handling layers
 
@@ -116,7 +130,9 @@ streaming `upstream.body` through and copying only stream-relevant headers. Retu
 
 ## Config reference
 
-Env vars are validated at boot; see `.env.example`. `AWS_REGION` is required. Credentials use
-the standard AWS chain (env → `~/.aws/credentials` → instance role), so the explicit
-`AWS_ACCESS_KEY_ID`/`SECRET` are optional. `DATABASE_URL`, `BEDROCK_KNOWLEDGE_BASE_ID`,
-`COMPANY_API_TOKEN` are optional but tools degrade/fail without real values.
+Env vars are validated at boot; see `backend/.env.example`. `AWS_REGION`,
+`BEDROCK_KNOWLEDGE_BASE_ID`, and `COMPANY_API_BASE_URL` are required. Credentials use the
+standard AWS chain (env → `~/.aws/credentials` → instance role), so explicit
+`AWS_ACCESS_KEY_ID`/`SECRET` are optional. `DATABASE_URL` is optional and only controls chat
+history persistence. `COMPANY_API_TOKEN` is optional when the upstream business API does not
+require bearer auth.

@@ -1,9 +1,9 @@
-# Enterprise AI Agent (EAAI) — NestJS Backend
+# Invest Broker Agent (EAAI) — NestJS Backend
 
-Production-ready NestJS backend for an enterprise AI agent. Powered by the
-Vercel AI SDK (`ai@5`), AWS Bedrock (`Claude 3.5 Sonnet`), and three live
-tools: a Bedrock Knowledge Base retriever, a Company REST API, and a
-PostgreSQL query tool.
+Production-ready NestJS backend for an Invest Broker Agent. Powered by the
+Vercel AI SDK, AWS Bedrock (`Claude 3.5 Sonnet`), and three tool domains:
+Policy Service tools, Party Service tools, and a Bedrock Knowledge Base
+retriever.
 
 Streams responses using the **Vercel AI UI Message Stream protocol**, so
 the frontend can drop in `useChat({ api: '/agent/chat' })` and render
@@ -14,19 +14,19 @@ tokens + tool calls incrementally.
 ## 1. Install
 
 ```bash
-pnpm install
+npm install
 ```
 
-This is a pnpm workspace. The NestJS backend is the root package and the
+This is an npm workspace. The NestJS backend is in `backend/` and the
 Next.js frontend is in `frontend/`.
 
 ## 2. Configure
 
 ```bash
-cp .env.example .env
+cp backend/.env.example backend/.env
 # fill in AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
 # BEDROCK_KNOWLEDGE_BASE_ID, COMPANY_API_BASE_URL, COMPANY_API_TOKEN,
-# DATABASE_URL (optional — mock data is used if unset).
+# DATABASE_URL (optional — chat history is disabled if unset).
 ```
 
 All env vars are validated at boot by a Zod schema in
@@ -38,13 +38,13 @@ process to exit **before** the HTTP server starts.
 ### Local
 
 ```bash
-pnpm run start:dev
+npm run start:dev
 ```
 
 Run the frontend in a second terminal:
 
 ```bash
-BACKEND_CHAT_URL=http://127.0.0.1:3000/agent/chat pnpm run frontend:dev -- --hostname 127.0.0.1 --port 3001
+BACKEND_CHAT_URL=http://127.0.0.1:3000/agent/chat npm run frontend:dev -- --hostname 127.0.0.1 --port 3001
 ```
 
 ### Docker (with Postgres)
@@ -63,13 +63,13 @@ This brings up `postgres` (with healthcheck) and the `app` service on
 ```bash
 curl -N -X POST http://localhost:3000/agent/chat \
   -H 'Content-Type: application/json' \
-  -d '{"prompt": "What were Q3 sales in EMEA?"}'
+  -d '{"prompt": "What does our leave policy say about carryover?"}'
 ```
 
 You should see a stream of UI Message Stream events:
 - `data: ` lines containing JSON-encoded text deltas
 - tool-call and tool-result events as the agent decides to call
-  `searchKnowledgeBase`, `getCompanyProduct`, or `querySalesPerformance`
+  Policy Service, Party Service, or `queryKnowledgeBase` tools
 - a final `finish` event
 
 The Next.js App Router frontend lives in `frontend/` and uses
@@ -86,7 +86,7 @@ src/
   app.module.ts                    Root module — wires Config/Llm/Tools/Agent
   config/
     env.validation.ts              Zod schema validating process.env on boot
-    configuration.ts               Typed AppConfig + Claude 3.5 Sonnet model ID
+    configuration.ts               Typed AppConfig + EU Claude 3.5 Sonnet profile ID
   llm/
     bedrock.provider.ts            createAmazonBedrock(...) -> LanguageModel provider
     llm.module.ts                  @Global() module exporting BEDROCK_MODEL token
@@ -97,9 +97,10 @@ src/
     agent.module.ts
   tools/
     tool-result.ts                 wrapToolResult — never throw; return { ok, data | error }
+    business-api/                  REST client with timeout + authenticated scope headers
     knowledge-base/                Bedrock KB RetrieveCommand
-    company-api/                   REST fetch with timeout
-    database/                      pg.Pool with mock fallback
+    policy/                        Policy Service tools
+    party/                         Party Service tools
     tools.module.ts
   common/
     filters/all-exceptions.filter.ts  Stream-aware global error handler
@@ -119,7 +120,8 @@ src/
 
 1. Client `POST /agent/chat` with `{ messages: UIMessage[] }` (or `{ prompt }`).
 2. `AgentService` converts to `ModelMessage[]` via `convertToModelMessages`.
-3. `streamText` is called with the three tools and `stopWhen: stepCountIs(5)`.
+3. `streamText` is called with Policy, Party, and `queryKnowledgeBase` tools,
+   plus `stopWhen: stepCountIs(5)`.
 4. Model emits text + optional tool calls. SDK validates tool args with the
    tool's zod `inputSchema` and invokes `execute`.
 5. Tool returns `{ ok: true, data }` or `{ ok: false, error }` (never throws).

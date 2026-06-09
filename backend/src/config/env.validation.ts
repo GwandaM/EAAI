@@ -11,8 +11,7 @@ const envSchema = z.object({
 
   BEDROCK_KNOWLEDGE_BASE_ID: z
     .string()
-    .min(1)
-    .default('KB_PLACEHOLDER_ID'),
+    .min(1, 'BEDROCK_KNOWLEDGE_BASE_ID is required.'),
 
   // Override the Bedrock model id. Required as a cross-region *inference profile*
   // id in many regions (e.g. eu.anthropic.… in eu-*, us.anthropic.… in us-*),
@@ -21,16 +20,38 @@ const envSchema = z.object({
 
   COMPANY_API_BASE_URL: z
     .string()
-    .url('COMPANY_API_BASE_URL must be a valid URL.')
-    .default('https://api.company.com'),
-  COMPANY_API_TOKEN: z.string().min(1).optional(),
+    .url('COMPANY_API_BASE_URL must be a valid URL.'),
+  COMPANY_API_TOKEN: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
 
-  // Treat an empty string the same as unset (history disabled, mock sales data),
-  // so `DATABASE_URL=` doesn't fail validation or trigger a doomed connection.
+  // Treat an empty string the same as unset (history disabled), so
+  // `DATABASE_URL=` doesn't fail validation or trigger a doomed connection.
   DATABASE_URL: z
     .string()
     .optional()
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+
+  // --- Oracle (optional; internal-only database access) ---
+  // node-oracledb runs in thin mode (no Instant Client). ORACLE_CONNECT_STRING is
+  // a TNS alias from tnsnames.ora, an Easy Connect string (host:port/service), or
+  // a full connect descriptor. ORACLE_TNS_ADMIN points at the directory holding
+  // tnsnames.ora when connecting by alias. All-or-none: user/password/connectString
+  // must be set together (enforced below).
+  ORACLE_USER: z.string().min(1).optional(),
+  ORACLE_PASSWORD: z.string().min(1).optional(),
+  ORACLE_CONNECT_STRING: z.string().min(1).optional(),
+  ORACLE_TNS_ADMIN: z.string().min(1).optional(),
+  // Schema names can't be bound, so they are concatenated into ALTER SESSION;
+  // restrict to a valid unquoted identifier to keep that injection-safe.
+  ORACLE_SCHEMA: z
+    .string()
+    .regex(
+      /^[A-Za-z][A-Za-z0-9_$#]*$/,
+      'ORACLE_SCHEMA must be a valid Oracle identifier (letters, digits, _ $ #; starting with a letter).',
+    )
+    .optional(),
 
   // Comma-separated list of allowed CORS origins. If unset, cross-origin requests
   // are reflected only in development; in production they are denied unless listed.
@@ -57,6 +78,28 @@ const envSchema = z.object({
         message:
           'AUTH_JWKS_URI is required unless AUTH_DISABLED=true (it is needed to verify bearer tokens).',
       });
+    }
+
+    // Oracle is all-or-none: a half-set of credentials can never connect, so fail
+    // fast at boot rather than warning at the first query. (TNS_ADMIN and SCHEMA
+    // are optional refinements on top of a valid connection.)
+    const oracleCore = [
+      ['ORACLE_USER', env.ORACLE_USER],
+      ['ORACLE_PASSWORD', env.ORACLE_PASSWORD],
+      ['ORACLE_CONNECT_STRING', env.ORACLE_CONNECT_STRING],
+    ] as const;
+    const setCount = oracleCore.filter(([, value]) => value).length;
+    if (setCount > 0 && setCount < oracleCore.length) {
+      for (const [name, value] of oracleCore) {
+        if (!value) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [name],
+            message:
+              'ORACLE_USER, ORACLE_PASSWORD and ORACLE_CONNECT_STRING must all be set together (or all unset).',
+          });
+        }
+      }
     }
   });
 
