@@ -55,7 +55,11 @@ describe('buildPartyTools', () => {
     } as unknown as PartyService;
 
     const tools = buildPartyTools(service, context);
-    const out = await tools.searchBrokerClients.execute!({ query: 'smith' }, noopOptions);
+    // page/pageSize are schema defaults; the SDK applies them before execute.
+    const out = await tools.searchBrokerClients.execute!(
+      { query: 'smith', page: 1, pageSize: 25 },
+      noopOptions,
+    );
 
     expect(out).toEqual({ ok: false, error: 'forbidden' });
   });

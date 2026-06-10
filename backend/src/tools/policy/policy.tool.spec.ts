@@ -1,3 +1,5 @@
+import type { z } from 'zod';
+
 import { buildPolicyTools } from './policy.tool';
 import type { PolicyService } from './policy.service';
 import type { BusinessToolContext } from '../business-api/business-tool-context';
@@ -46,6 +48,20 @@ describe('buildPolicyTools', () => {
         data: { policyId: 'POL-1' },
       },
     });
+  });
+
+  it('accepts numeric policy ids and normalizes them to URL-safe strings', () => {
+    const tools = buildPolicyTools({} as PolicyService, context);
+    const schema = tools.getPolicy.inputSchema as z.ZodTypeAny;
+
+    // The business API uses numeric policy ids: a number (or numeric string)
+    // must validate, and the parsed output must be a string for URL segments.
+    expect(schema.parse({ policyId: 12345 })).toEqual({ policyId: '12345' });
+    expect(schema.parse({ policyId: '12345' })).toEqual({ policyId: '12345' });
+
+    expect(schema.safeParse({ policyId: 'POL-1' }).success).toBe(false);
+    expect(schema.safeParse({ policyId: -1 }).success).toBe(false);
+    expect(schema.safeParse({}).success).toBe(false);
   });
 
   it('returns ok:false when the policy service fails', async () => {

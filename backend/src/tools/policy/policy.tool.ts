@@ -5,8 +5,20 @@ import type { BusinessToolContext } from '../business-api/business-tool-context'
 import { wrapToolResult, type ToolOutcome } from '../tool-result';
 import type { PolicyService } from './policy.service';
 
+/**
+ * Policy ids are numeric in the business API. Accept a number (or numeric
+ * string) from the model, reject anything non-numeric, and normalize to a
+ * string because ids travel in URL path/query segments.
+ */
+const policyIdField = z.coerce
+  .number()
+  .int()
+  .positive()
+  .describe('The numeric policy identifier.')
+  .transform((id) => String(id));
+
 const policyIdSchema = z.object({
-  policyId: z.string().min(1).describe('The policy identifier.'),
+  policyId: policyIdField,
 });
 
 const policyWithdrawalsSchema = policyIdSchema.extend({
@@ -16,7 +28,7 @@ const policyWithdrawalsSchema = policyIdSchema.extend({
 
 const policyPartySchema = z
   .object({
-    policyId: z.string().min(1).optional().describe('The policy identifier.'),
+    policyId: policyIdField.optional(),
     partyId: z.string().min(1).optional().describe('The party/client identifier.'),
   })
   .refine((input) => input.policyId || input.partyId, {
@@ -41,7 +53,10 @@ type ToolOutput = ToolOutcome<unknown>;
 
 function businessTool<Input>(
   description: string,
-  inputSchema: z.ZodType<Input>,
+  // Third type param is `unknown` so schemas may transform (e.g. coerce a
+  // numeric policyId to string): the model-facing input type can differ from
+  // the parsed type the service receives.
+  inputSchema: z.ZodType<Input, z.ZodTypeDef, unknown>,
   execute: (input: Input) => Promise<unknown>,
 ) {
   return defineAgentTool<Input, ToolOutput>({

@@ -36,8 +36,15 @@ const searchBrokerClientsSchema = brokerScopedSchema.extend({
   pageSize: z.number().int().min(1).max(100).default(25).describe('Results per page.'),
 });
 
+// Same numeric-id rule as the Policy tools: the business API uses numeric
+// policy ids; accept number or numeric string, normalize to string for URLs.
 const policyRelationshipsSchema = z.object({
-  policyId: z.string().min(1).describe('The policy identifier.'),
+  policyId: z.coerce
+    .number()
+    .int()
+    .positive()
+    .describe('The numeric policy identifier.')
+    .transform((id) => String(id)),
 });
 
 const organisationRelationshipsSchema = z.object({
@@ -65,7 +72,10 @@ type ToolOutput = ToolOutcome<unknown>;
 
 function businessTool<Input>(
   description: string,
-  inputSchema: z.ZodType<Input>,
+  // Third type param is `unknown` so schemas may transform (e.g. coerce a
+  // numeric policyId to string): the model-facing input type can differ from
+  // the parsed type the service receives.
+  inputSchema: z.ZodType<Input, z.ZodTypeDef, unknown>,
   execute: (input: Input) => Promise<unknown>,
 ) {
   return defineAgentTool<Input, ToolOutput>({

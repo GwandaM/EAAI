@@ -18,15 +18,10 @@ services:
 
   app:
     build:
-<<<<<<< HEAD
       # Context is the repo root so the build can see the workspace lockfile and
       # both package manifests; the Dockerfile itself lives in backend/.
       context: .
       dockerfile: backend/Dockerfile
-=======
-      context: ./backend
-      dockerfile: Dockerfile
->>>>>>> 651a0558592feb65a9df8327110da0226de684ef
     restart: unless-stopped
     env_file: backend/.env
     environment:
