@@ -44,10 +44,18 @@ continue with the best available answer rather than failing the conversation.`;
 
 const MAX_AGENT_STEPS = 5;
 
+interface UIMessageStreamFinishEvent {
+  responseMessage?: { parts?: unknown[] };
+  isAborted?: boolean;
+}
+
 interface StreamTextResult {
   pipeUIMessageStreamToResponse: (
     response: Response,
-    options?: { onError?: (error: unknown) => string },
+    options?: {
+      onError?: (error: unknown) => string;
+      onFinish?: (event: UIMessageStreamFinishEvent) => void | Promise<void>;
+    },
   ) => void;
 }
 
@@ -59,7 +67,6 @@ interface StreamTextOptions {
   stopWhen: unknown;
   maxRetries: number;
   onError?: (event: { error: unknown }) => void;
-  onFinish?: (event: { text: string }) => void;
 }
 
 const streamTextLoose = streamText as unknown as (
@@ -124,19 +131,23 @@ export class AgentService {
           error instanceof Error ? error.stack : undefined,
         );
       },
-      onFinish: ({ text }) => {
-        if (conversationId && text) {
-          void this.persist(user.userId, conversationId, 'assistant', [
-            { type: 'text', text },
-          ]);
-        }
-      },
     });
 
     // Pipe the AI SDK's UI Message Stream directly to the Express response.
     // This sets the right SSE-style headers, handles backpressure, and emits the
     // wire format that Vercel AI SDK's useChat() consumes on the frontend.
     result.pipeUIMessageStreamToResponse(res, {
+      // The UI-message onFinish (unlike streamText's) carries the assistant
+      // message with its tool parts, so charts/diagrams survive a reload.
+      onFinish: ({ responseMessage, isAborted }) => {
+        if (!conversationId || isAborted) {
+          return;
+        }
+        const parts = this.persistableParts(responseMessage?.parts ?? []);
+        if (parts.length > 0) {
+          void this.persist(user.userId, conversationId, 'assistant', parts);
+        }
+      },
       onError: (error) => {
         const detail = this.describeError(error);
         this.logger.error(
@@ -160,6 +171,30 @@ export class AgentService {
       return `${error.name}: ${error.message}${cause}`;
     }
     return typeof error === 'string' ? error : JSON.stringify(error);
+  }
+
+  /**
+   * Assistant parts worth replaying on reload: the text answer plus completed
+   * visualizations. Intermediate tool parts (policy/party lookups, failed or
+   * still-streaming visualizations) would only render as stale placeholders in
+   * the frontend, so they are dropped.
+   */
+  private persistableParts(parts: unknown[]): unknown[] {
+    return parts.filter((part) => {
+      const p = part as {
+        type?: string;
+        text?: string;
+        state?: string;
+        output?: { ok?: boolean };
+      };
+      if (p.type === 'text') {
+        return typeof p.text === 'string' && p.text.length > 0;
+      }
+      if (p.type === 'tool-presentChart' || p.type === 'tool-presentDiagram') {
+        return p.state === 'output-available' && p.output?.ok === true;
+      }
+      return false;
+    });
   }
 
   /** The parts of the user's latest turn, for persistence (detached copy). */
