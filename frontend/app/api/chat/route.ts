@@ -21,8 +21,14 @@ function copyStreamHeaders(source: Headers): Headers {
   return headers;
 }
 
+// In development, fall back to the local backend so the app works even when
+// the servers are started separately (without scripts/dev.mjs wiring the env).
+const DEV_BACKEND_CHAT_URL = 'http://localhost:3000/agent/chat';
+
 export async function POST(request: Request) {
-  const backendChatUrl = process.env.BACKEND_CHAT_URL;
+  const backendChatUrl =
+    process.env.BACKEND_CHAT_URL ??
+    (process.env.NODE_ENV !== 'production' ? DEV_BACKEND_CHAT_URL : undefined);
 
   if (!backendChatUrl) {
     return Response.json(

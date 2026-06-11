@@ -2,7 +2,9 @@ export const runtime = 'nodejs';
 
 /**
  * Resolve the backend base URL. Prefer an explicit BACKEND_BASE_URL; otherwise
- * derive it from BACKEND_CHAT_URL (which points at `.../agent/chat`).
+ * derive it from BACKEND_CHAT_URL (which points at `.../agent/chat`). In
+ * development, fall back to the local backend so the app works even when the
+ * servers are started separately (without scripts/dev.mjs wiring the env).
  */
 function backendBaseUrl(): string | undefined {
   if (process.env.BACKEND_BASE_URL) {
@@ -10,7 +12,9 @@ function backendBaseUrl(): string | undefined {
   }
   const chatUrl = process.env.BACKEND_CHAT_URL;
   if (!chatUrl) {
-    return undefined;
+    return process.env.NODE_ENV !== 'production'
+      ? 'http://localhost:3000'
+      : undefined;
   }
   return chatUrl.replace(/\/agent\/chat\/?$/, '');
 }
