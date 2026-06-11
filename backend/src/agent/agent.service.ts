@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   convertToModelMessages,
   stepCountIs,
@@ -11,6 +12,7 @@ import {
 } from 'ai';
 import type { Response } from 'express';
 
+import type { AppConfig } from '../config/configuration';
 import { BEDROCK_MODEL } from '../llm/bedrock.provider';
 import { HistoryService } from '../persistence/history.service';
 import { buildAgentTools } from '../tools/agent-tools';
@@ -62,6 +64,7 @@ const stepCountIsLoose = stepCountIs as unknown as (stepCount: number) => unknow
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
+  private readonly isProduction: boolean;
 
   constructor(
     @Inject(BEDROCK_MODEL) private readonly model: unknown,
@@ -69,7 +72,10 @@ export class AgentService {
     private readonly policy: PolicyService,
     private readonly party: PartyService,
     private readonly history: HistoryService,
-  ) {}
+    config: ConfigService<AppConfig, true>,
+  ) {
+    this.isProduction = config.get('nodeEnv', { infer: true }) === 'production';
+  }
 
   async streamChat(
     request: ChatRequestDto,
@@ -106,7 +112,10 @@ export class AgentService {
       stopWhen: stepCountIsLoose(MAX_AGENT_STEPS),
       maxRetries: 2,
       onError: ({ error }) => {
-        this.logger.error('streamText error', error as Error);
+        this.logger.error(
+          `streamText error: ${this.describeError(error)}`,
+          error instanceof Error ? error.stack : undefined,
+        );
       },
       onFinish: ({ text }) => {
         if (conversationId && text) {
@@ -122,10 +131,28 @@ export class AgentService {
     // wire format that Vercel AI SDK's useChat() consumes on the frontend.
     result.pipeUIMessageStreamToResponse(res, {
       onError: (error) => {
-        this.logger.error('UI stream serialization error', error as Error);
-        return 'An internal error occurred while generating the response.';
+        const detail = this.describeError(error);
+        this.logger.error(
+          `Agent stream failed: ${detail}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+        // Outside production, send the real cause to the client so failures
+        // (bad credentials, wrong model id, unreachable upstream, …) are
+        // debuggable from the browser. In production, keep details server-side.
+        return this.isProduction
+          ? 'An internal error occurred while generating the response.'
+          : `Agent error: ${detail}`;
       },
     });
+  }
+
+  private describeError(error: unknown): string {
+    if (error instanceof Error) {
+      const cause =
+        error.cause instanceof Error ? ` (cause: ${error.cause.message})` : '';
+      return `${error.name}: ${error.message}${cause}`;
+    }
+    return typeof error === 'string' ? error : JSON.stringify(error);
   }
 
   /** The parts of the user's latest turn, for persistence (detached copy). */
