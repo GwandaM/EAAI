@@ -17,13 +17,16 @@ type QueryParams = Record<string, QueryValue>;
 
 @Injectable()
 export class BusinessApiService {
-  private readonly baseUrl: string;
+  private readonly baseUrls: Record<BusinessServiceSource, string>;
   private readonly token: string | undefined;
   private static readonly TIMEOUT_MS = 10_000;
 
   constructor(config: ConfigService<AppConfig, true>) {
     const api = config.get('companyApi', { infer: true });
-    this.baseUrl = api.baseUrl;
+    this.baseUrls = {
+      'policy-service': api.policyBaseUrl,
+      'party-service': api.partyBaseUrl,
+    };
     this.token = api.token;
   }
 
@@ -34,7 +37,7 @@ export class BusinessApiService {
     pathSegments: string[],
     query?: QueryParams,
   ): Promise<BusinessApiResult<T>> {
-    const data = await this.request<T>(context, 'GET', pathSegments, query);
+    const data = await this.request<T>(context, source, 'GET', pathSegments, query);
     return { source, operation, data };
   }
 
@@ -45,18 +48,20 @@ export class BusinessApiService {
     pathSegments: string[],
     body: unknown,
   ): Promise<BusinessApiResult<T>> {
-    const data = await this.request<T>(context, 'POST', pathSegments, undefined, body);
+    const data = await this.request<T>(context, source, 'POST', pathSegments, undefined, body);
     return { source, operation, data };
   }
 
   private async request<T>(
     context: BusinessToolContext,
+    source: BusinessServiceSource,
     method: 'GET' | 'POST',
     pathSegments: string[],
     query?: QueryParams,
     body?: unknown,
   ): Promise<T> {
-    const base = this.baseUrl.endsWith('/') ? this.baseUrl : `${this.baseUrl}/`;
+    const baseUrl = this.baseUrls[source];
+    const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     const path = pathSegments.map((segment) => encodeURIComponent(segment)).join('/');
     const url = new URL(path, base);
 

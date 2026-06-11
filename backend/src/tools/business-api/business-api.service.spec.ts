@@ -7,7 +7,11 @@ function fakeConfig(): ConfigService<unknown, true> {
   return {
     get: jest.fn((key: string) =>
       key === 'companyApi'
-        ? { baseUrl: 'https://api.company.test/base', token: 'api-token' }
+        ? {
+            policyBaseUrl: 'https://policy.company.test/base',
+            partyBaseUrl: 'https://party.company.test/base',
+            token: 'api-token',
+          }
         : undefined,
     ),
   } as unknown as ConfigService<unknown, true>;
@@ -53,7 +57,7 @@ describe('BusinessApiService', () => {
     });
     const calledUrl = fetchMock.mock.calls[0][0] as URL;
     expect(calledUrl.toString()).toBe(
-      'https://api.company.test/base/policies/..%2FPOL%20123?includeClosed=true',
+      'https://policy.company.test/base/policies/..%2FPOL%20123?includeClosed=true',
     );
 
     const init = fetchMock.mock.calls[0][1] as RequestInit;
@@ -64,6 +68,19 @@ describe('BusinessApiService', () => {
     expect(headers['X-Broker-Id']).toBe('broker-456');
     expect(headers['X-Party-Id']).toBe('party-789');
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('routes party-service calls to the party base URL with the shared bearer token', async () => {
+    const service = new BusinessApiService(fakeConfig());
+
+    await service.get(context, 'party-service', 'getParty', ['parties', 'P-1']);
+
+    const calledUrl = fetchMock.mock.calls[0][0] as URL;
+    expect(calledUrl.toString()).toBe('https://party.company.test/base/parties/P-1');
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      'Bearer api-token',
+    );
   });
 
   it('POSTs JSON bodies to validation endpoints', async () => {

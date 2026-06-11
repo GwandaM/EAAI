@@ -15,7 +15,8 @@ export interface AppConfig {
     knowledgeBaseId: string;
   };
   companyApi: {
-    baseUrl: string;
+    policyBaseUrl: string;
+    partyBaseUrl: string;
     token?: string;
   };
   database: {
@@ -58,7 +59,8 @@ export function buildAppConfig(env: ValidatedEnv): AppConfig {
       knowledgeBaseId: env.BEDROCK_KNOWLEDGE_BASE_ID,
     },
     companyApi: {
-      baseUrl: env.COMPANY_API_BASE_URL,
+      policyBaseUrl: env.POLICY_SERVICE_BASE_URL,
+      partyBaseUrl: env.PARTY_SERVICE_BASE_URL,
       token: env.COMPANY_API_TOKEN,
     },
     database: {

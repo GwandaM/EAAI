@@ -8,8 +8,12 @@ Invest Broker Agent backend: a NestJS service that exposes `POST /agent/chat`, r
 agent loop on AWS Bedrock (Claude 3.5 Sonnet) via the Vercel AI SDK, and streams responses
 using the **UI Message Stream protocol** so a `useChat()` frontend renders tokens + tool
 calls incrementally. Active model-facing tools are grouped into Policy Service, Party
-Service, and Bedrock Knowledge Base domains. PostgreSQL is used only for
-conversation-history persistence (`persistence/`), not as a model-facing data tool.
+Service, Bedrock Knowledge Base, and Visualization domains. The visualization tools
+(`tools/visualization/`) are validate-and-echo: `presentChart`/`presentDiagram` take a
+declarative spec (Recharts-style chart data or Mermaid source), validate it with Zod, and
+return it in the tool result; the frontend renders those tool parts as actual chart/diagram
+components (`frontend/components/agent-chart.tsx`, `agent-diagram.tsx`). PostgreSQL is used
+only for conversation-history persistence (`persistence/`), not as a model-facing data tool.
 
 This is an **npm workspace** with two packages: the NestJS backend in `backend/`
 (`enterprise-ai-agent-backend`) and the Next.js frontend in `frontend/`
@@ -131,8 +135,9 @@ streaming `upstream.body` through and copying only stream-relevant headers. Retu
 ## Config reference
 
 Env vars are validated at boot; see `backend/.env.example`. `AWS_REGION`,
-`BEDROCK_KNOWLEDGE_BASE_ID`, and `COMPANY_API_BASE_URL` are required. Credentials use the
-standard AWS chain (env → `~/.aws/credentials` → instance role), so explicit
-`AWS_ACCESS_KEY_ID`/`SECRET` are optional. `DATABASE_URL` is optional and only controls chat
-history persistence. `COMPANY_API_TOKEN` is optional when the upstream business API does not
-require bearer auth.
+`BEDROCK_KNOWLEDGE_BASE_ID`, `POLICY_SERVICE_BASE_URL`, and `PARTY_SERVICE_BASE_URL` are
+required — the Policy and Party services live on different base URLs but share one bearer
+token. Credentials use the standard AWS chain (env → `~/.aws/credentials` → instance role),
+so explicit `AWS_ACCESS_KEY_ID`/`SECRET` are optional. `DATABASE_URL` is optional and only
+controls chat history persistence. `COMPANY_API_TOKEN` (the shared bearer token) is optional
+when the upstream services do not require bearer auth.

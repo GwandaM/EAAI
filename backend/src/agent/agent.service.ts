@@ -30,6 +30,13 @@ benefits, special offers, outstanding bills, policy search, and subscriptions.
 Use the Party Service tools for parties, broker details, AUM, commissions,
 broker clients, credit-control counts, and relationship validation. Use
 queryKnowledgeBase for unstructured product, process, or document knowledge.
+When your answer presents numerical or categorical results that are easier to
+grasp visually — distributions (e.g. clients per product), comparisons, shares
+of a total, trends over time, or correlations — call presentChart with the
+chart type that best fits the data, and use presentDiagram (Mermaid) for
+relationship structures or process flows. The visual is rendered to the user
+directly; always accompany it with text explaining the key takeaways. Only
+visualize data returned by tools, never invented numbers.
 Never ask the user for internal database details and never invent policy,
 client, or broker facts without tool support. Always cite the tool source in
 your final answer. If a tool returns ok=false, explain the limitation and
@@ -37,10 +44,18 @@ continue with the best available answer rather than failing the conversation.`;
 
 const MAX_AGENT_STEPS = 5;
 
+interface UIMessageStreamFinishEvent {
+  responseMessage?: { parts?: unknown[] };
+  isAborted?: boolean;
+}
+
 interface StreamTextResult {
   pipeUIMessageStreamToResponse: (
     response: Response,
-    options?: { onError?: (error: unknown) => string },
+    options?: {
+      onError?: (error: unknown) => string;
+      onFinish?: (event: UIMessageStreamFinishEvent) => void | Promise<void>;
+    },
   ) => void;
 }
 
@@ -52,7 +67,6 @@ interface StreamTextOptions {
   stopWhen: unknown;
   maxRetries: number;
   onError?: (event: { error: unknown }) => void;
-  onFinish?: (event: { text: string }) => void;
 }
 
 const streamTextLoose = streamText as unknown as (
@@ -117,19 +131,23 @@ export class AgentService {
           error instanceof Error ? error.stack : undefined,
         );
       },
-      onFinish: ({ text }) => {
-        if (conversationId && text) {
-          void this.persist(user.userId, conversationId, 'assistant', [
-            { type: 'text', text },
-          ]);
-        }
-      },
     });
 
     // Pipe the AI SDK's UI Message Stream directly to the Express response.
     // This sets the right SSE-style headers, handles backpressure, and emits the
     // wire format that Vercel AI SDK's useChat() consumes on the frontend.
     result.pipeUIMessageStreamToResponse(res, {
+      // The UI-message onFinish (unlike streamText's) carries the assistant
+      // message with its tool parts, so charts/diagrams survive a reload.
+      onFinish: ({ responseMessage, isAborted }) => {
+        if (!conversationId || isAborted) {
+          return;
+        }
+        const parts = this.persistableParts(responseMessage?.parts ?? []);
+        if (parts.length > 0) {
+          void this.persist(user.userId, conversationId, 'assistant', parts);
+        }
+      },
       onError: (error) => {
         const detail = this.describeError(error);
         this.logger.error(
@@ -153,6 +171,30 @@ export class AgentService {
       return `${error.name}: ${error.message}${cause}`;
     }
     return typeof error === 'string' ? error : JSON.stringify(error);
+  }
+
+  /**
+   * Assistant parts worth replaying on reload: the text answer plus completed
+   * visualizations. Intermediate tool parts (policy/party lookups, failed or
+   * still-streaming visualizations) would only render as stale placeholders in
+   * the frontend, so they are dropped.
+   */
+  private persistableParts(parts: unknown[]): unknown[] {
+    return parts.filter((part) => {
+      const p = part as {
+        type?: string;
+        text?: string;
+        state?: string;
+        output?: { ok?: boolean };
+      };
+      if (p.type === 'text') {
+        return typeof p.text === 'string' && p.text.length > 0;
+      }
+      if (p.type === 'tool-presentChart' || p.type === 'tool-presentDiagram') {
+        return p.state === 'output-available' && p.output?.ok === true;
+      }
+      return false;
+    });
   }
 
   /** The parts of the user's latest turn, for persistence (detached copy). */

@@ -89,4 +89,68 @@ describe('AgentService', () => {
       {},
     );
   });
+
+  it('persists the text answer and completed visualizations, dropping other tool parts', async () => {
+    const pipe = jest.fn();
+    mockedStreamText.mockReturnValue({ pipeUIMessageStreamToResponse: pipe });
+    const history = {
+      enabled: true,
+      appendMessage: jest.fn().mockResolvedValue(true),
+    } as unknown as HistoryService;
+    const service = new AgentService(
+      'model',
+      {} as KnowledgeBaseService,
+      {} as PolicyService,
+      {} as PartyService,
+      history,
+      { get: jest.fn().mockReturnValue('test') } as unknown as ConfigService<
+        AppConfig,
+        true
+      >,
+    );
+
+    const user: AuthenticatedUser = {
+      userId: 'user-1',
+      email: 'broker@example.test',
+      claims: { sub: 'user-1' },
+    };
+
+    await service.streamChat(
+      { prompt: 'distribution please', conversationId: 'conv-1' } as never,
+      user,
+      {} as Response,
+    );
+
+    const chartPart = {
+      type: 'tool-presentChart',
+      state: 'output-available',
+      output: { ok: true, data: { kind: 'chart', chartType: 'pie' } },
+    };
+    const pipeOptions = pipe.mock.calls[0][1];
+    await pipeOptions.onFinish({
+      isAborted: false,
+      responseMessage: {
+        parts: [
+          { type: 'step-start' },
+          { type: 'tool-getPolicy', state: 'output-available', output: { ok: true } },
+          chartPart,
+          {
+            type: 'tool-presentDiagram',
+            state: 'output-available',
+            output: { ok: false, error: 'bad mermaid' },
+          },
+          { type: 'text', text: 'Here is the distribution.' },
+        ],
+      },
+    });
+    // persist() is fire-and-forget; flush the microtask queue before asserting.
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(history.appendMessage).toHaveBeenCalledWith(
+      'user-1',
+      'conv-1',
+      'assistant',
+      [chartPart, { type: 'text', text: 'Here is the distribution.' }],
+    );
+  });
 });

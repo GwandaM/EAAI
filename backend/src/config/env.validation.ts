@@ -18,9 +18,14 @@ const envSchema = z.object({
   // where the bare model id is rejected as "invalid model identifier".
   BEDROCK_MODEL_ID: z.string().min(1).optional(),
 
-  COMPANY_API_BASE_URL: z
+  // Policy and Party services live behind different base URLs but share the
+  // same bearer token (COMPANY_API_TOKEN).
+  POLICY_SERVICE_BASE_URL: z
     .string()
-    .url('COMPANY_API_BASE_URL must be a valid URL.'),
+    .url('POLICY_SERVICE_BASE_URL must be a valid URL.'),
+  PARTY_SERVICE_BASE_URL: z
+    .string()
+    .url('PARTY_SERVICE_BASE_URL must be a valid URL.'),
   COMPANY_API_TOKEN: z
     .string()
     .optional()

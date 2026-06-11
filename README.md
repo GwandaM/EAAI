@@ -25,7 +25,8 @@ Next.js frontend is in `frontend/`.
 ```bash
 cp backend/.env.example backend/.env
 # fill in AWS_REGION, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-# BEDROCK_KNOWLEDGE_BASE_ID, COMPANY_API_BASE_URL, COMPANY_API_TOKEN,
+# BEDROCK_KNOWLEDGE_BASE_ID, POLICY_SERVICE_BASE_URL, PARTY_SERVICE_BASE_URL,
+# COMPANY_API_TOKEN (shared by both services),
 # DATABASE_URL (optional — chat history is disabled if unset).
 ```
 
@@ -90,12 +91,14 @@ would receive.
 ### Step 1 — make sure `backend/.env` is valid
 
 The CLI runs the same fail-fast env validation as the server, so
-`AWS_REGION`, `BEDROCK_KNOWLEDGE_BASE_ID`, and `COMPANY_API_BASE_URL` must be
-set. You only need *reachable* services for the tools you actually run:
+`AWS_REGION`, `BEDROCK_KNOWLEDGE_BASE_ID`, `POLICY_SERVICE_BASE_URL`, and
+`PARTY_SERVICE_BASE_URL` must be set. You only need *reachable* services for
+the tools you actually run:
 
 | Tool group | Needs |
 |---|---|
-| Policy / Party tools | `COMPANY_API_BASE_URL` pointing at a running business API |
+| Policy tools | `POLICY_SERVICE_BASE_URL` pointing at a running policy service |
+| Party tools | `PARTY_SERVICE_BASE_URL` pointing at a running party service |
 | `queryKnowledgeBase` | Valid AWS credentials + `BEDROCK_KNOWLEDGE_BASE_ID` |
 | `oracle.query` (dev-only) | `ORACLE_USER`, `ORACLE_PASSWORD`, `ORACLE_CONNECT_STRING` |
 
@@ -197,8 +200,8 @@ diff expected.json actual.json && echo "matches"
 
 | Symptom | Cause |
 |---|---|
-| `Invalid environment configuration: COMPANY_API_BASE_URL: Required` | `backend/.env` is missing a required var — the server would fail boot the same way |
-| `{ "ok": false, "error": "fetch failed" }` | Business API at `COMPANY_API_BASE_URL` is unreachable |
+| `Invalid environment configuration: POLICY_SERVICE_BASE_URL: Required` | `backend/.env` is missing a required var — the server would fail boot the same way |
+| `{ "ok": false, "error": "fetch failed" }` | The service at `POLICY_SERVICE_BASE_URL` / `PARTY_SERVICE_BASE_URL` is unreachable |
 | `Oracle is not configured. Set ORACLE_USER...` | `ORACLE_*` env vars unset — expected unless you're testing `oracle.query` |
 | `Unknown tool "..."` | Check spelling against `npm run tools -- list` |
 
