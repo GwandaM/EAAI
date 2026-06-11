@@ -6,11 +6,21 @@ import {
   Bot,
   Loader2,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   SquarePen,
   Trash2,
   UserRound,
 } from 'lucide-react';
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  FormEvent,
+  PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '@ai-sdk/react';
@@ -39,6 +49,21 @@ const CHAT_API_ENDPOINT = process.env.NEXT_PUBLIC_CHAT_API_URL ?? '/api/chat';
 // Where we remember the active conversation across page refreshes.
 const CONVERSATION_STORAGE_KEY = 'eaai.conversationId';
 
+// Sidebar layout, persisted across page refreshes.
+const SIDEBAR_WIDTH_STORAGE_KEY = 'eaai.sidebarWidth';
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'eaai.sidebarCollapsed';
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 480;
+const SIDEBAR_DEFAULT_WIDTH = 288;
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+}
+
+// The backend generates a summary title shortly after the first assistant
+// reply; this delay covers that generation before re-fetching the list.
+const TITLE_REFRESH_DELAY_MS = 3000;
+
 const VISUALIZATION_PART_TYPES = ['tool-presentChart', 'tool-presentDiagram'];
 
 // Extract a renderable spec from a presentChart/presentDiagram tool part.
@@ -55,11 +80,6 @@ function visualizationSpec(part: {
   if (output.data.kind === 'chart') return output.data as ChartSpec;
   if (output.data.kind === 'diagram') return output.data as DiagramSpec;
   return null;
-}
-
-function titleFromText(text: string): string {
-  const trimmed = text.trim().replace(/\s+/g, ' ');
-  return trimmed.length > 60 ? `${trimmed.slice(0, 57)}…` : trimmed;
 }
 
 function ThinkingIndicator() {
@@ -85,7 +105,11 @@ export default function Page() {
   const [input, setInput] = useState('');
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const sidebarHydratedRef = useRef(false);
 
   const transport = useMemo(
     () => new DefaultChatTransport({ api: CHAT_API_ENDPOINT }),
@@ -139,6 +163,69 @@ export default function Page() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, status]);
 
+  // Restore the persisted sidebar layout (done post-mount to avoid an
+  // SSR/client hydration mismatch on the inline width style).
+  useEffect(() => {
+    const storedWidth = Number(
+      window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY),
+    );
+    if (Number.isFinite(storedWidth) && storedWidth > 0) {
+      setSidebarWidth(clampSidebarWidth(storedWidth));
+    }
+    setSidebarCollapsed(
+      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true',
+    );
+    sidebarHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarHydratedRef.current) return;
+    window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth));
+    window.localStorage.setItem(
+      SIDEBAR_COLLAPSED_STORAGE_KEY,
+      String(sidebarCollapsed),
+    );
+  }, [sidebarWidth, sidebarCollapsed]);
+
+  // The backend summarizes untitled conversations after the assistant's reply,
+  // so refresh the list when a stream finishes — once right away (updated_at
+  // ordering) and once after the title generation has had time to land.
+  const wasGeneratingRef = useRef(false);
+  useEffect(() => {
+    const wasGenerating = wasGeneratingRef.current;
+    wasGeneratingRef.current = isGenerating;
+    if (wasGenerating && !isGenerating) {
+      void refreshConversations();
+      const timer = setTimeout(
+        () => void refreshConversations(),
+        TITLE_REFRESH_DELAY_MS,
+      );
+      return () => clearTimeout(timer);
+    }
+  }, [isGenerating, refreshConversations]);
+
+  const startSidebarResize = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsResizingSidebar(true);
+      const onMove = (e: PointerEvent) => {
+        // The sidebar starts at the viewport's left edge, so the pointer's
+        // x-position is the desired width.
+        setSidebarWidth(clampSidebarWidth(e.clientX));
+      };
+      const stop = () => {
+        setIsResizingSidebar(false);
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    },
+    [],
+  );
+
   function startNewChat() {
     if (isGenerating) return;
     setMessages([]);
@@ -167,10 +254,12 @@ export default function Page() {
     const text = input.trim();
     if (!text || isGenerating) return;
 
-    // Lazily create a titled conversation on the first message of a new chat.
+    // Lazily create a conversation on the first message of a new chat. It is
+    // created untitled — the backend summarizes the first exchange into a
+    // title once the assistant has replied.
     let id = conversationId;
     if (!id) {
-      const created = await createConversation(titleFromText(text));
+      const created = await createConversation();
       if (created) {
         id = created.id;
         setConversationId(created.id);
@@ -184,23 +273,44 @@ export default function Page() {
   }
 
   return (
-    <main className="flex h-screen bg-background text-foreground">
-      {/* Conversation history sidebar */}
-      <aside className="hidden w-72 shrink-0 flex-col border-r border-border bg-card md:flex">
+    <main
+      className={cn(
+        'flex h-screen bg-background text-foreground',
+        isResizingSidebar && 'select-none',
+      )}
+    >
+      {/* Conversation history sidebar (resizable; hidden when collapsed) */}
+      {!sidebarCollapsed && (
+      <aside
+        style={{ width: sidebarWidth }}
+        className="hidden shrink-0 flex-col bg-card md:flex"
+      >
         <div className="flex items-center justify-between border-b border-border px-4 py-4">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
             History
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={startNewChat}
-            disabled={isGenerating}
-          >
-            <SquarePen className="h-4 w-4" aria-hidden="true" />
-            New
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={startNewChat}
+              disabled={isGenerating}
+            >
+              <SquarePen className="h-4 w-4" aria-hidden="true" />
+              New
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarCollapsed(true)}
+              aria-label="Hide history pane"
+              title="Hide history pane"
+            >
+              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </div>
         </div>
         <ScrollArea className="min-h-0 flex-1">
           <div className="space-y-1 p-2">
@@ -249,17 +359,54 @@ export default function Page() {
           </div>
         </ScrollArea>
       </aside>
+      )}
+
+      {/* Drag handle: doubles as the sidebar/chat divider. */}
+      {!sidebarCollapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize history pane"
+          onPointerDown={startSidebarResize}
+          onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+          className={cn(
+            'hidden w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/50 md:block',
+            isResizingSidebar && 'bg-primary/50',
+          )}
+        />
+      )}
 
       {/* Chat column */}
-      <section className="mx-auto flex w-full max-w-5xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <section
+        className={cn(
+          'mx-auto flex min-w-0 w-full flex-col px-4 py-5 sm:px-6 lg:px-8',
+          // With the history pane hidden, let the chat use the full screen.
+          sidebarCollapsed ? 'max-w-none' : 'max-w-5xl',
+        )}
+      >
         <header className="mb-5 flex items-center justify-between border-b border-border/70 pb-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Invest Broker
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-              Broker Agent
-            </h1>
+          <div className="flex items-center gap-3">
+            {sidebarCollapsed && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarCollapsed(false)}
+                aria-label="Show history pane"
+                title="Show history pane"
+                className="hidden md:inline-flex"
+              >
+                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            )}
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                Invest Broker
+              </p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+                Broker Agent
+              </h1>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <Badge

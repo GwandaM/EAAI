@@ -65,6 +65,47 @@ describe('HistoryService — appendMessage ownership', () => {
   });
 });
 
+describe('HistoryService — title summarization', () => {
+  it('needs a title only when the owned conversation has none', async () => {
+    const pool: PoolStub = {
+      query: jest
+        .fn()
+        .mockResolvedValueOnce({ rowCount: 1, rows: [{ title: null }] })
+        .mockResolvedValueOnce({ rowCount: 1, rows: [{ title: 'Set' }] })
+        .mockResolvedValueOnce({ rowCount: 0, rows: [] }),
+    };
+    const svc = withPool(pool);
+
+    await expect(svc.conversationNeedsTitle('u1', 'c1')).resolves.toBe(true);
+    await expect(svc.conversationNeedsTitle('u1', 'c1')).resolves.toBe(false);
+    // Not owned / not found.
+    await expect(svc.conversationNeedsTitle('intruder', 'c1')).resolves.toBe(
+      false,
+    );
+  });
+
+  it('setTitleIfUnset updates only untitled conversations owned by the user', async () => {
+    const pool: PoolStub = {
+      query: jest.fn().mockResolvedValue({ rowCount: 1, rows: [] }),
+    };
+    const svc = withPool(pool);
+
+    await expect(svc.setTitleIfUnset('u1', 'c1', 'My title')).resolves.toBe(
+      true,
+    );
+    const [sql, values] = pool.query.mock.calls[0];
+    expect(sql).toMatch(/title is null/i);
+    expect(sql).toMatch(/user_id = \$2/i);
+    expect(values).toEqual(['c1', 'u1', 'My title']);
+  });
+
+  it('degrades gracefully without a pool', async () => {
+    const svc = new HistoryService(null);
+    await expect(svc.conversationNeedsTitle('u1', 'c1')).resolves.toBe(false);
+    await expect(svc.setTitleIfUnset('u1', 'c1', 't')).resolves.toBe(false);
+  });
+});
+
 describe('HistoryService — listConversations', () => {
   it('scopes the query to the requesting user', async () => {
     const pool: PoolStub = {
