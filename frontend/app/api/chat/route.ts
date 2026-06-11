@@ -21,8 +21,14 @@ function copyStreamHeaders(source: Headers): Headers {
   return headers;
 }
 
+// In development, fall back to the local backend so the app works even when
+// the servers are started separately (without scripts/dev.mjs wiring the env).
+const DEV_BACKEND_CHAT_URL = 'http://localhost:3000/agent/chat';
+
 export async function POST(request: Request) {
-  const backendChatUrl = process.env.BACKEND_CHAT_URL;
+  const backendChatUrl =
+    process.env.BACKEND_CHAT_URL ??
+    (process.env.NODE_ENV !== 'production' ? DEV_BACKEND_CHAT_URL : undefined);
 
   if (!backendChatUrl) {
     return Response.json(
@@ -42,11 +48,28 @@ export async function POST(request: Request) {
     headers.Authorization = authorization;
   }
 
-  const upstream = await fetch(backendChatUrl, {
-    method: 'POST',
-    headers,
-    body: await request.text(),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(backendChatUrl, {
+      method: 'POST',
+      headers,
+      body: await request.text(),
+    });
+  } catch (error) {
+    // Node's fetch wraps connection errors ("fetch failed") with the real
+    // reason (ECONNREFUSED, ENOTFOUND, …) in `cause` — surface both.
+    const detail =
+      error instanceof Error
+        ? [error.message, error.cause instanceof Error ? error.cause.message : null]
+            .filter(Boolean)
+            .join(' — ')
+        : String(error);
+    console.error(`[api/chat] Could not reach backend at ${backendChatUrl}:`, error);
+    return Response.json(
+      { error: `Could not reach backend at ${backendChatUrl}: ${detail}` },
+      { status: 502 },
+    );
+  }
 
   return new Response(upstream.body, {
     status: upstream.status,

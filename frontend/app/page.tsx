@@ -74,6 +74,10 @@ export default function Page() {
 
   const { messages, setMessages, sendMessage, status, error } = useChat({
     transport,
+    onError: (chatError) => {
+      // Keep the full error (incl. stack) in devtools; the banner shows message only.
+      console.error('[chat] request failed:', chatError);
+    },
   });
 
   const isGenerating = status === 'submitted' || status === 'streaming';
@@ -356,8 +360,13 @@ export default function Page() {
 
                   {error && (
                     <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                      The agent could not complete the request. Check the backend
-                      endpoint and server logs.
+                      <p className="font-medium">
+                        The agent could not complete the request.
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap break-words">
+                        {error.message ||
+                          'No error details were provided. Check the backend endpoint and server logs.'}
+                      </p>
                     </div>
                   )}
 

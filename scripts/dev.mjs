@@ -1,5 +1,5 @@
 // Run the NestJS backend (watch mode) and the Next.js frontend together.
-// Usage: pnpm run dev
+// Usage: npm run dev
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -56,20 +56,26 @@ console.log(
   `[dev] backend → http://127.0.0.1:${BACKEND_PORT}  |  frontend → http://127.0.0.1:${FRONTEND_PORT}`,
 );
 
-run('backend', 'pnpm', ['run', 'start:dev']);
+run(
+  'backend',
+  npm,
+  ['run', 'start:dev', '-w', 'enterprise-ai-agent-backend'],
+  ROOT,
+);
 run(
   'frontend',
-  'pnpm',
+  npm,
   [
-    '--filter',
-    'enterprise-ai-agent-frontend',
-    'exec',
-    'next',
+    'run',
     'dev',
+    '-w',
+    'enterprise-ai-agent-frontend',
+    '--',
     '--hostname',
     '127.0.0.1',
     '--port',
     FRONTEND_PORT,
   ],
+  ROOT,
   { BACKEND_CHAT_URL: `http://127.0.0.1:${BACKEND_PORT}/agent/chat` },
 );

@@ -1,5 +1,7 @@
+import type { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 
+import type { AppConfig } from '../config/configuration';
 import type { HistoryService } from '../persistence/history.service';
 import type { KnowledgeBaseService } from '../tools/knowledge-base/knowledge-base.service';
 import type { PolicyService } from '../tools/policy/policy.service';
@@ -42,6 +44,10 @@ describe('AgentService', () => {
       {} as PolicyService,
       party,
       { enabled: false } as HistoryService,
+      { get: jest.fn().mockReturnValue('test') } as unknown as ConfigService<
+        AppConfig,
+        true
+      >,
     );
 
     const user: AuthenticatedUser = {
