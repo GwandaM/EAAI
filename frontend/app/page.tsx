@@ -15,6 +15,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '@ai-sdk/react';
 
+import { AgentChart, type ChartSpec } from '@/components/agent-chart';
+import { AgentDiagram, type DiagramSpec } from '@/components/agent-diagram';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -36,6 +38,24 @@ const CHAT_API_ENDPOINT = process.env.NEXT_PUBLIC_CHAT_API_URL ?? '/api/chat';
 
 // Where we remember the active conversation across page refreshes.
 const CONVERSATION_STORAGE_KEY = 'eaai.conversationId';
+
+const VISUALIZATION_PART_TYPES = ['tool-presentChart', 'tool-presentDiagram'];
+
+// Extract a renderable spec from a presentChart/presentDiagram tool part.
+// Returns null while the tool call is still streaming or if it failed
+// (ok:false), in which case the generic tool indicator is shown instead.
+function visualizationSpec(part: {
+  type: string;
+  state?: string;
+  output?: unknown;
+}): ChartSpec | DiagramSpec | null {
+  if (part.state !== 'output-available') return null;
+  const output = part.output as { ok?: boolean; data?: { kind?: string } } | undefined;
+  if (output?.ok !== true || !output.data) return null;
+  if (output.data.kind === 'chart') return output.data as ChartSpec;
+  if (output.data.kind === 'diagram') return output.data as DiagramSpec;
+  return null;
+}
 
 function titleFromText(text: string): string {
   const trimmed = text.trim().replace(/\s+/g, ' ');
@@ -287,6 +307,10 @@ export default function Page() {
                 <div className="space-y-7">
                   {messages.map((message) => {
                     const isUser = message.role === 'user';
+                    // Charts and diagrams need horizontal room; widen the bubble.
+                    const hasVisualization = message.parts.some((part) =>
+                      VISUALIZATION_PART_TYPES.includes(part.type),
+                    );
 
                     return (
                       <article
@@ -300,7 +324,10 @@ export default function Page() {
 
                         <div
                           className={cn(
-                            'max-w-[86%] rounded-lg px-4 py-3 text-sm leading-6 sm:max-w-[74%]',
+                            'max-w-[86%] rounded-lg px-4 py-3 text-sm leading-6',
+                            hasVisualization
+                              ? 'w-full sm:max-w-[86%]'
+                              : 'sm:max-w-[74%]',
                             isUser
                               ? 'bg-primary text-primary-foreground'
                               : 'bg-secondary text-secondary-foreground ring-1 ring-border/80',
@@ -323,6 +350,31 @@ export default function Page() {
                                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                     {part.text}
                                   </ReactMarkdown>
+                                </div>
+                              );
+                            }
+
+                            if (VISUALIZATION_PART_TYPES.includes(part.type)) {
+                              const spec = visualizationSpec(part);
+                              if (spec) {
+                                return spec.kind === 'chart' ? (
+                                  <AgentChart
+                                    key={`${message.id}-${index}`}
+                                    spec={spec}
+                                  />
+                                ) : (
+                                  <AgentDiagram
+                                    key={`${message.id}-${index}`}
+                                    spec={spec}
+                                  />
+                                );
+                              }
+                              return (
+                                <div
+                                  key={`${message.id}-${index}`}
+                                  className="text-xs font-medium text-muted-foreground"
+                                >
+                                  Preparing visualization...
                                 </div>
                               );
                             }

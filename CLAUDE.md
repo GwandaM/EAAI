@@ -8,8 +8,12 @@ Invest Broker Agent backend: a NestJS service that exposes `POST /agent/chat`, r
 agent loop on AWS Bedrock (Claude 3.5 Sonnet) via the Vercel AI SDK, and streams responses
 using the **UI Message Stream protocol** so a `useChat()` frontend renders tokens + tool
 calls incrementally. Active model-facing tools are grouped into Policy Service, Party
-Service, and Bedrock Knowledge Base domains. PostgreSQL is used only for
-conversation-history persistence (`persistence/`), not as a model-facing data tool.
+Service, Bedrock Knowledge Base, and Visualization domains. The visualization tools
+(`tools/visualization/`) are validate-and-echo: `presentChart`/`presentDiagram` take a
+declarative spec (Recharts-style chart data or Mermaid source), validate it with Zod, and
+return it in the tool result; the frontend renders those tool parts as actual chart/diagram
+components (`frontend/components/agent-chart.tsx`, `agent-diagram.tsx`). PostgreSQL is used
+only for conversation-history persistence (`persistence/`), not as a model-facing data tool.
 
 This is an **npm workspace** with two packages: the NestJS backend in `backend/`
 (`enterprise-ai-agent-backend`) and the Next.js frontend in `frontend/`
