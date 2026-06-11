@@ -28,6 +28,7 @@
     "frontend:lint": "npm run lint -w enterprise-ai-agent-frontend",
     "frontend:typecheck": "npm run typecheck -w enterprise-ai-agent-frontend",
     "smoke:prod": "node scripts/smoke-prod.mjs",
-    "download:discovery-pdfs": "node scripts/download-discovery-pdfs.mjs"
+    "download:discovery-pdfs": "node scripts/download-discovery-pdfs.mjs",
+    "creds": "npm run creds -w enterprise-ai-agent-backend"
   }
 }

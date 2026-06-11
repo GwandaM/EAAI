@@ -15,7 +15,8 @@
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:bedrock": "cross-env RUN_BEDROCK_INTEGRATION=true jest --config ./test/jest-e2e.json bedrock.integration",
-    "tools": "ts-node --transpile-only src/cli/tools-cli.ts"
+    "tools": "ts-node --transpile-only src/cli/tools-cli.ts",
+    "creds": "ts-node --transpile-only src/cli/creds-cli.ts"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.113",
@@ -28,6 +29,7 @@
     "ai": "^6.0.197",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jose": "^5.10.0",
     "oracledb": "^6.7.0",
