@@ -10,8 +10,10 @@ describe('App e2e', () => {
     process.env.AWS_REGION = process.env.AWS_REGION ?? 'us-east-1';
     process.env.BEDROCK_KNOWLEDGE_BASE_ID =
       process.env.BEDROCK_KNOWLEDGE_BASE_ID ?? 'KB_TEST';
-    process.env.COMPANY_API_BASE_URL =
-      process.env.COMPANY_API_BASE_URL ?? 'https://api.company.test';
+    process.env.POLICY_SERVICE_BASE_URL =
+      process.env.POLICY_SERVICE_BASE_URL ?? 'https://policy.company.test';
+    process.env.PARTY_SERVICE_BASE_URL =
+      process.env.PARTY_SERVICE_BASE_URL ?? 'https://party.company.test';
     // Bypass JWT verification for e2e; the guard itself is unit-tested separately.
     process.env.AUTH_DISABLED = 'true';
     // Keep this e2e hermetic: don't connect to a real DB at boot (an empty value

@@ -131,8 +131,9 @@ streaming `upstream.body` through and copying only stream-relevant headers. Retu
 ## Config reference
 
 Env vars are validated at boot; see `backend/.env.example`. `AWS_REGION`,
-`BEDROCK_KNOWLEDGE_BASE_ID`, and `COMPANY_API_BASE_URL` are required. Credentials use the
-standard AWS chain (env → `~/.aws/credentials` → instance role), so explicit
-`AWS_ACCESS_KEY_ID`/`SECRET` are optional. `DATABASE_URL` is optional and only controls chat
-history persistence. `COMPANY_API_TOKEN` is optional when the upstream business API does not
-require bearer auth.
+`BEDROCK_KNOWLEDGE_BASE_ID`, `POLICY_SERVICE_BASE_URL`, and `PARTY_SERVICE_BASE_URL` are
+required — the Policy and Party services live on different base URLs but share one bearer
+token. Credentials use the standard AWS chain (env → `~/.aws/credentials` → instance role),
+so explicit `AWS_ACCESS_KEY_ID`/`SECRET` are optional. `DATABASE_URL` is optional and only
+controls chat history persistence. `COMPANY_API_TOKEN` (the shared bearer token) is optional
+when the upstream services do not require bearer auth.
