@@ -71,6 +71,26 @@ export async function POST(request: Request) {
     );
   }
 
+  // An HTML 404 means whatever answered is not the NestJS backend — typically
+  // this Next.js dev server proxying to itself because it took port 3000
+  // (started standalone before/without the backend). Surface that instead of
+  // passing the confusing 404 through to useChat.
+  if (
+    upstream.status === 404 &&
+    (upstream.headers.get('content-type') ?? '').includes('text/html')
+  ) {
+    return Response.json(
+      {
+        error:
+          `No backend found at ${backendChatUrl} (got an HTML 404 — likely this ` +
+          'Next.js server answering its own proxy request). Start the NestJS ' +
+          'backend on port 3000 (`npm run dev` or `npm run start:dev` from the ' +
+          'repo root) or set BACKEND_CHAT_URL.',
+      },
+      { status: 502 },
+    );
+  }
+
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
