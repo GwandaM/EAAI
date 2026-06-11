@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   convertToModelMessages,
+  generateText,
   stepCountIs,
   streamText,
 } from 'ai';
@@ -44,6 +45,16 @@ continue with the best available answer rather than failing the conversation.`;
 
 const MAX_AGENT_STEPS = 5;
 
+const TITLE_SYSTEM_PROMPT = `You write titles for conversations between an
+investment broker and an AI assistant. Summarize the conversation's topic in
+one short phrase of at most six words, in the language of the conversation.
+Respond with the title only — no quotes, no trailing punctuation, no
+explanations.`;
+
+// How much of each turn the title model sees; titles only need the gist.
+const TITLE_CONTEXT_CHARS = 1500;
+const TITLE_MAX_LENGTH = 80;
+
 interface UIMessageStreamFinishEvent {
   responseMessage?: { parts?: unknown[] };
   isAborted?: boolean;
@@ -74,6 +85,13 @@ const streamTextLoose = streamText as unknown as (
 ) => StreamTextResult;
 
 const stepCountIsLoose = stepCountIs as unknown as (stepCount: number) => unknown;
+
+const generateTextLoose = generateText as unknown as (options: {
+  model: unknown;
+  system: string;
+  prompt: string;
+  maxRetries?: number;
+}) => Promise<{ text: string }>;
 
 @Injectable()
 export class AgentService {
@@ -147,6 +165,13 @@ export class AgentService {
         if (parts.length > 0) {
           void this.persist(user.userId, conversationId, 'assistant', parts);
         }
+        // Best-effort: summarize the first exchange into a sidebar title.
+        void this.maybeGenerateTitle(
+          user.userId,
+          conversationId,
+          userPartsToPersist,
+          parts,
+        );
       },
       onError: (error) => {
         const detail = this.describeError(error);
@@ -209,6 +234,73 @@ export class AgentService {
       return [{ type: 'text', text: request.prompt }];
     }
     return [];
+  }
+
+  /**
+   * Generate an LLM summary title for a still-untitled conversation, based on
+   * the first user/assistant exchange. Fire-and-forget: any failure is logged
+   * and the conversation simply stays untitled until the next turn retries.
+   */
+  private async maybeGenerateTitle(
+    userId: string,
+    conversationId: string,
+    userParts: unknown[],
+    assistantParts: unknown[],
+  ): Promise<void> {
+    try {
+      if (!this.history.enabled) {
+        return;
+      }
+      if (!(await this.history.conversationNeedsTitle(userId, conversationId))) {
+        return;
+      }
+      const userText = this.textFromParts(userParts);
+      if (!userText) {
+        return;
+      }
+      const assistantText = this.textFromParts(assistantParts);
+      const { text } = await generateTextLoose({
+        model: this.model,
+        system: TITLE_SYSTEM_PROMPT,
+        prompt: `User: ${userText.slice(0, TITLE_CONTEXT_CHARS)}\n\nAssistant: ${assistantText.slice(0, TITLE_CONTEXT_CHARS)}`,
+        maxRetries: 1,
+      });
+      const title = this.sanitizeTitle(text);
+      if (title) {
+        await this.history.setTitleIfUnset(userId, conversationId, title);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to generate conversation title: ${this.describeError(error)}`,
+      );
+    }
+  }
+
+  /** Concatenated text content of a message's parts (tool parts are skipped). */
+  private textFromParts(parts: unknown[]): string {
+    return parts
+      .map((part) => {
+        const p = part as { type?: string; text?: string };
+        return p.type === 'text' && typeof p.text === 'string' ? p.text : '';
+      })
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+  }
+
+  /** Normalize model output into a single-line title, or null if unusable. */
+  private sanitizeTitle(raw: string): string | null {
+    const title = raw
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^["'`]+|["'`.]+$/g, '')
+      .trim();
+    if (!title) {
+      return null;
+    }
+    return title.length > TITLE_MAX_LENGTH
+      ? `${title.slice(0, TITLE_MAX_LENGTH - 1)}…`
+      : title;
   }
 
   /** Append a turn to history, swallowing errors so chat never fails on persistence. */

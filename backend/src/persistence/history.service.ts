@@ -149,6 +149,41 @@ export class HistoryService implements OnModuleInit {
     return (rowCount ?? 0) > 0;
   }
 
+  /** Whether the conversation exists, is owned by userId, and has no title yet. */
+  async conversationNeedsTitle(
+    userId: string,
+    conversationId: string,
+  ): Promise<boolean> {
+    if (!this.pool) {
+      return false;
+    }
+    const { rows, rowCount } = await this.pool.query(
+      `select title from conversations where id = $1 and user_id = $2`,
+      [conversationId, userId],
+    );
+    return (rowCount ?? 0) > 0 && rows[0].title === null;
+  }
+
+  /**
+   * Set the title only if it is still unset, so a concurrent rename (or a
+   * second in-flight summary) never overwrites an existing title.
+   */
+  async setTitleIfUnset(
+    userId: string,
+    conversationId: string,
+    title: string,
+  ): Promise<boolean> {
+    if (!this.pool) {
+      return false;
+    }
+    const { rowCount } = await this.pool.query(
+      `update conversations set title = $3
+        where id = $1 and user_id = $2 and title is null`,
+      [conversationId, userId, title],
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
   /**
    * Append a message to a conversation the user owns, bumping its updated_at.
    * Returns false if the conversation does not exist or is not owned by userId
