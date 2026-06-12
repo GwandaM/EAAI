@@ -7,7 +7,7 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 
-const BACKEND_PORT = process.env.PORT ?? '3000';
+const BACKEND_PORT = process.env.PORT ?? '3005';
 const FRONTEND_PORT = process.env.FRONTEND_PORT ?? '3001';
 
 // On Windows, npm is npm.cmd; on Unix it is npm.

@@ -2,13 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// Mirrors the backend presentDiagram tool output (backend/src/tools/visualization).
-export interface DiagramSpec {
-  kind: 'diagram';
-  title: string;
-  description?: string;
-  mermaid: string;
-}
+// The spec type comes straight from the backend presentDiagram tool's zod
+// schema (type-only import — nothing from the backend ships to the browser).
+import type { DiagramSpec } from '@backend/agent-tools/ui';
+
+export type { DiagramSpec };
 
 let renderSeq = 0;
 

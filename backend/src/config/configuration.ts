@@ -61,7 +61,7 @@ export function buildAppConfig(env: ValidatedEnv): AppConfig {
     companyApi: {
       policyBaseUrl: env.POLICY_SERVICE_BASE_URL,
       partyBaseUrl: env.PARTY_SERVICE_BASE_URL,
-      token: env.COMPANY_API_TOKEN,
+      token: env.BEARER_TOKEN ?? env.COMPANY_API_TOKEN,
     },
     database: {
       url: env.DATABASE_URL,

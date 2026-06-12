@@ -1,7 +1,5 @@
+import { tool } from 'ai';
 import { z } from 'zod';
-
-import { defineAgentTool } from '../ai-tool';
-import { wrapToolResult, type ToolOutcome } from '../tool-result';
 
 /**
  * Visualization tools are validate-and-echo: the model composes a declarative
@@ -134,21 +132,37 @@ function validateDiagram(input: DiagramInput): DiagramSpec {
   return { kind: 'diagram', ...input, mermaid: source };
 }
 
-export function buildVisualizationTools() {
+// Unlike the API tools, visualization tools return an { ok } envelope instead
+// of throwing: the frontend renders `output.ok === true` parts as components,
+// and an ok:false result gives the model a correctable validation message.
+type VisualizationOutcome<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string };
+
+function present<T>(validate: () => T): VisualizationOutcome<T> {
+  try {
+    return { ok: true, data: validate() };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function createVisualizationTools() {
   return {
-    presentChart: defineAgentTool<ChartInput, ToolOutcome<ChartSpec>>({
+    presentChart: tool({
       description:
         'Render a chart in the chat UI. Call this whenever you present numerical or categorical results that are easier to grasp visually — distributions (e.g. clients per product), comparisons, shares of a total, trends over time, or correlations. Pick the chartType that best fits the data. The chart is shown to the user directly; still explain the key takeaways in your text answer.',
       inputSchema: chartInputSchema,
-      execute: async (input) =>
-        wrapToolResult('visualization.presentChart', async () => validateChart(input)),
+      execute: async (input) => present(() => validateChart(input)),
     }),
-    presentDiagram: defineAgentTool<DiagramInput, ToolOutcome<DiagramSpec>>({
+    presentDiagram: tool({
       description:
         'Render a Mermaid diagram in the chat UI. Use for structural or process information — relationships between parties, policies and organisations, ownership trees, or step-by-step flows. The diagram is shown to the user directly; still explain it in your text answer.',
       inputSchema: diagramInputSchema,
-      execute: async (input) =>
-        wrapToolResult('visualization.presentDiagram', async () => validateDiagram(input)),
+      execute: async (input) => present(() => validateDiagram(input)),
     }),
   };
 }

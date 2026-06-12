@@ -25,6 +25,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useChat } from '@ai-sdk/react';
 
+import type { AgentUIMessage } from '@backend/agent-tools/ui';
+
 import { AgentChart, type ChartSpec } from '@/components/agent-chart';
 import { AgentDiagram, type DiagramSpec } from '@/components/agent-diagram';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -66,20 +68,20 @@ const TITLE_REFRESH_DELAY_MS = 3000;
 
 const VISUALIZATION_PART_TYPES = ['tool-presentChart', 'tool-presentDiagram'];
 
+type AgentMessagePart = AgentUIMessage['parts'][number];
+
 // Extract a renderable spec from a presentChart/presentDiagram tool part.
 // Returns null while the tool call is still streaming or if it failed
 // (ok:false), in which case the generic tool indicator is shown instead.
-function visualizationSpec(part: {
-  type: string;
-  state?: string;
-  output?: unknown;
-}): ChartSpec | DiagramSpec | null {
+// The part is fully typed from the backend tool schemas — no casts needed.
+function visualizationSpec(part: AgentMessagePart): ChartSpec | DiagramSpec | null {
+  if (part.type !== 'tool-presentChart' && part.type !== 'tool-presentDiagram') {
+    return null;
+  }
   if (part.state !== 'output-available') return null;
-  const output = part.output as { ok?: boolean; data?: { kind?: string } } | undefined;
-  if (output?.ok !== true || !output.data) return null;
-  if (output.data.kind === 'chart') return output.data as ChartSpec;
-  if (output.data.kind === 'diagram') return output.data as DiagramSpec;
-  return null;
+  const output = part.output;
+  if (!output.ok) return null;
+  return output.data;
 }
 
 function ThinkingIndicator() {
@@ -112,11 +114,11 @@ export default function Page() {
   const sidebarHydratedRef = useRef(false);
 
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: CHAT_API_ENDPOINT }),
+    () => new DefaultChatTransport<AgentUIMessage>({ api: CHAT_API_ENDPOINT }),
     [],
   );
 
-  const { messages, setMessages, sendMessage, status, error } = useChat({
+  const { messages, setMessages, sendMessage, status, error } = useChat<AgentUIMessage>({
     transport,
     onError: (chatError) => {
       // Keep the full error (incl. stack) in devtools; the banner shows message only.

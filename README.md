@@ -45,7 +45,7 @@ npm run start:dev
 Run the frontend in a second terminal:
 
 ```bash
-BACKEND_CHAT_URL=http://127.0.0.1:3000/agent/chat npm run frontend:dev -- --hostname 127.0.0.1 --port 3001
+BACKEND_CHAT_URL=http://127.0.0.1:3005/agent/chat npm run frontend:dev -- --hostname 127.0.0.1 --port 3001
 ```
 
 ### Docker (with Postgres)
@@ -55,14 +55,14 @@ docker compose up --build
 ```
 
 This brings up `postgres` (with healthcheck) and the `app` service on
-`http://localhost:3000`.
+`http://localhost:3005`.
 
 ## 4. Trigger from the frontend
 
 ### `curl` smoke test (no frontend required)
 
 ```bash
-curl -N -X POST http://localhost:3000/agent/chat \
+curl -N -X POST http://localhost:3005/agent/chat \
   -H 'Content-Type: application/json' \
   -d '{"prompt": "What does our leave policy say about carryover?"}'
 ```
@@ -84,9 +84,8 @@ browser.
 Every agent tool can be invoked directly from the terminal — no model, no HTTP
 server, no frontend. The harness (`backend/src/cli/tools-cli.ts`) boots the real
 DI container, builds the **same tool objects the agent uses** (via
-`src/tools/agent-tools.ts`), validates your input with the same Zod schema the
-model is held to, and prints the `{ ok, data | error }` envelope the model
-would receive.
+`ToolsService`), and validates your input with the same Zod schema the model is
+held to.
 
 ### Step 1 — make sure `backend/.env` is valid
 
@@ -210,55 +209,68 @@ diff expected.json actual.json && echo "matches"
 ```
 src/
   main.ts                          NestJS bootstrap, ValidationPipe, CORS, exception filter
-  app.module.ts                    Root module — wires Config/Llm/Tools/Agent
+  app.module.ts                    Root module — wires Config/Auth/Persistence/Tools/Agent
   config/
     env.validation.ts              Zod schema validating process.env on boot
     configuration.ts               Typed AppConfig + EU Claude 3.5 Sonnet profile ID
-  llm/
-    bedrock.provider.ts            createAmazonBedrock(...) -> LanguageModel provider
-    llm.module.ts                  @Global() module exporting BEDROCK_MODEL token
+  agent-tools/                     Framework-free tool contract (no NestJS imports)
+    party-schemas.ts               Zod schemas — source of truth for Party API shapes
+    policy-schemas.ts              Zod schemas — source of truth for Policy API shapes
+    party.ts                       createPartyTools(baseUrl, headers) — 12 tools
+    policy.ts                      createPolicyTools(baseUrl, headers) — 12 tools
+    knowledge-base.ts              createKnowledgeBaseTool — Bedrock KB retrieval
+    visualization.ts               presentChart/presentDiagram (validate-and-echo)
+    http.ts                        Shared fetchJson (non-OK responses throw)
+    index.ts                       createTools composition root + ToolScope headers
+    ui.ts                          AgentUIMessage — type-only contract for the frontend
   agent/
-    agent.controller.ts            POST /agent/chat (streams UI Message events)
-    agent.service.ts               streamText(...) orchestrator
+    agent.constants.ts             Bedrock model factory + system prompt
+    agent.service.ts               streamText(...) orchestrator + history/title persistence
+    tool-trace.ts                  Dev stderr traces of tool calls
     dto/chat-request.dto.ts        class-validator DTO for { messages | prompt }
     agent.module.ts
+  chat/
+    chat.controller.ts             POST /agent/chat (streams UI Message events)
+    chat.module.ts
   cli/
     tools-cli.ts                   Tool harness CLI (npm run tools -- ...)
     tools-cli.module.ts            Slim DI context: config + tools, no HTTP/LLM
   tools/
-    agent-tools.ts                 buildAgentTools — the model-facing tool registry
-    tool-result.ts                 wrapToolResult — never throw; return { ok, data | error }
-    business-api/                  REST client with timeout + authenticated scope headers
-    knowledge-base/                Bedrock KB RetrieveCommand
-    policy/                        Policy Service tools (.service.ts I/O + .tool.ts schema)
-    party/                         Party Service tools (.service.ts I/O + .tool.ts schema)
+    tools.service.ts               Binds AppConfig + per-user scope to createTools
     oracle/                        Read-only Oracle service — CLI dev-only, never model-facing
     tools.module.ts
   persistence/                     Optional Postgres chat-history (DATABASE_URL)
   common/
+    logging.middleware.ts          Per-request access log
     filters/all-exceptions.filter.ts  Stream-aware global error handler
 ```
+
+The frontend imports the tool contract **type-only** via the `@backend/*` alias
+(`import type { AgentUIMessage } from '@backend/agent-tools/ui'`) so `useChat()`
+and the chart/diagram components share the backend's zod-derived types without
+shipping any server code to the browser (enforced by an ESLint rule).
 
 ## 7. Error handling at a glance
 
 | Layer | What happens on failure |
 |---|---|
-| Tool `execute` throws | `wrapToolResult` catches, returns `{ ok: false, error }` — model sees and recovers |
+| Tool `execute` throws | AI SDK emits a tool error; the system prompt tells the model to explain the limitation |
 | `streamText` runtime error | `onError` logs; UI stream emits a safe error event via `pipeUIMessageStreamToResponse({ onError })` |
 | DTO / validation | Global `ValidationPipe` rejects with 400 before reaching the service |
 | Any other thrown error | `AllExceptionsFilter` logs and either sends JSON 5xx or, for already-streaming responses, closes cleanly |
 | Process-level | `unhandledRejection` handler in `main.ts` logs without crashing |
 
-## 8. How the agent loop works (AI SDK v5)
+## 8. How the agent loop works (AI SDK v6)
 
 1. Client `POST /agent/chat` with `{ messages: UIMessage[] }` (or `{ prompt }`).
 2. `AgentService` converts to `ModelMessage[]` via `convertToModelMessages`.
 3. `streamText` is called with Policy, Party, and `queryKnowledgeBase` tools,
-   plus `stopWhen: stepCountIs(5)`.
+   plus `stopWhen: stepCountIs(10)`.
 4. Model emits text + optional tool calls. SDK validates tool args with the
    tool's zod `inputSchema` and invokes `execute`.
-5. Tool returns `{ ok: true, data }` or `{ ok: false, error }` (never throws).
-6. SDK sends the tool result back to the model. Loop continues up to 5 steps.
+5. Tool results are sent back to the model; visualization and knowledge-base
+   unavailable states use structured tool outputs.
+6. SDK sends the tool result back to the model. Loop continues up to 10 steps.
 7. All deltas — text, tool calls, tool results, finish — are piped to the
    Express response via `pipeUIMessageStreamToResponse`. `useChat` parses
    them automatically on the frontend.

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   HttpCode,
@@ -10,14 +9,14 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 
+import { AgentService } from '../agent/agent.service';
+import { ChatRequestDto } from '../agent/dto/chat-request.dto';
 import { CurrentUser, type AuthenticatedUser } from '../auth/authenticated-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AgentService } from './agent.service';
-import { ChatRequestDto } from './dto/chat-request.dto';
 
 @Controller('agent')
 @UseGuards(JwtAuthGuard)
-export class AgentController {
+export class ChatController {
   constructor(private readonly agent: AgentService) {}
 
   @Post('chat')
@@ -27,9 +26,8 @@ export class AgentController {
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: false }) res: Response,
   ): Promise<void> {
-    if (!body.messages?.length && !body.prompt) {
-      throw new BadRequestException('Either `messages` or `prompt` is required.');
-    }
+    // `messages`/`prompt` presence is enforced in AgentService.normalizeMessages
+    // (it throws BadRequestException), so no duplicate check here.
     await this.agent.streamChat(body, user, res);
   }
 }

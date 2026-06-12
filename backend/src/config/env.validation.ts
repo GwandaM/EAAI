@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().int().positive().default(3000),
+  PORT: z.coerce.number().int().positive().default(3005),
 
   AWS_REGION: z.string().min(1, 'AWS_REGION is required (e.g. us-east-1).'),
   AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
@@ -19,13 +19,17 @@ const envSchema = z.object({
   BEDROCK_MODEL_ID: z.string().min(1).optional(),
 
   // Policy and Party services live behind different base URLs but share the
-  // same bearer token (COMPANY_API_TOKEN).
+  // same bearer token (BEARER_TOKEN, with COMPANY_API_TOKEN as a legacy alias).
   POLICY_SERVICE_BASE_URL: z
     .string()
     .url('POLICY_SERVICE_BASE_URL must be a valid URL.'),
   PARTY_SERVICE_BASE_URL: z
     .string()
     .url('PARTY_SERVICE_BASE_URL must be a valid URL.'),
+  BEARER_TOKEN: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
   COMPANY_API_TOKEN: z
     .string()
     .optional()

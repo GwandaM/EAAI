@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 
 import { Logger, ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -20,14 +20,14 @@ async function bootstrap() {
   const isProduction = config.get('nodeEnv', { infer: true }) === 'production';
 
   // Only reflect arbitrary origins (with credentials) outside production. In
-  // production, require an explicit allowlist so we never echo back an attacker
+  // production, require an explicit allowlist so we never echo an attacker
   // origin on a credentialed request.
   const origin =
     corsOrigins.length > 0 ? corsOrigins : isProduction ? false : true;
 
   if (isProduction && corsOrigins.length === 0) {
     logger.warn(
-      'CORS_ORIGINS is not set in production — cross-origin requests will be denied.',
+      'CORS_ORIGINS is not set in production; cross-origin requests will be denied.',
     );
   }
 
@@ -41,29 +41,25 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: false,
       transform: true,
-      // NOTE: do not enable implicit conversion — it coerces the chat DTO's
-      // arbitrary `parts` objects into `[]`, corrupting model input and history.
+      // Do not enable implicit conversion: it can coerce arbitrary AI SDK
+      // message parts into empty arrays and corrupt model input/history.
     }),
   );
 
   app.useGlobalFilters(new AllExceptionsFilter());
-
   app.enableShutdownHooks();
 
   const port = config.get('port', { infer: true });
-
   await app.listen(port);
   logger.log(`Invest Broker Agent backend listening on http://localhost:${port}`);
-  logger.log('POST /agent/chat — streams UI Message events for Vercel AI SDK useChat().');
+  logger.log('POST /agent/chat streams UI Message events for Vercel AI SDK useChat().');
 }
 
 process.on('unhandledRejection', (reason) => {
-   
   console.error('[unhandledRejection]', reason);
 });
 
 bootstrap().catch((error) => {
-   
   console.error('Fatal bootstrap error:', error);
   process.exit(1);
 });

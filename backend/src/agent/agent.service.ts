@@ -1,49 +1,22 @@
-import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, Inject, Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import {
   convertToModelMessages,
   generateText,
   stepCountIs,
   streamText,
-} from 'ai';
-import type { Response } from 'express';
+  type ModelMessage,
+} from "ai";
+import type { Response } from "express";
 
-import type { AppConfig } from '../config/configuration';
-import { BEDROCK_MODEL } from '../llm/bedrock.provider';
-import { HistoryService } from '../persistence/history.service';
-import { buildAgentTools } from '../tools/agent-tools';
-import { KnowledgeBaseService } from '../tools/knowledge-base/knowledge-base.service';
-import { PolicyService } from '../tools/policy/policy.service';
-import { PartyService } from '../tools/party/party.service';
-import type { BusinessToolContext } from '../tools/business-api/business-tool-context';
-
-import type { AuthenticatedUser } from '../auth/authenticated-user';
-import type { ChatRequestDto } from './dto/chat-request.dto';
-
-const SYSTEM_PROMPT = `You are the Invest Broker Agent.
-Use the Policy Service tools for policy data, values, performance, withdrawals,
-benefits, special offers, outstanding bills, policy search, and subscriptions.
-Use the Party Service tools for parties, broker details, AUM, commissions,
-broker clients, credit-control counts, and relationship validation. Use
-queryKnowledgeBase for unstructured product, process, or document knowledge.
-When your answer presents numerical or categorical results that are easier to
-grasp visually — distributions (e.g. clients per product), comparisons, shares
-of a total, trends over time, or correlations — call presentChart with the
-chart type that best fits the data, and use presentDiagram (Mermaid) for
-relationship structures or process flows. The visual is rendered to the user
-directly; always accompany it with text explaining the key takeaways. Only
-visualize data returned by tools, never invented numbers.
-Never ask the user for internal database details and never invent policy,
-client, or broker facts without tool support. Always cite the tool source in
-your final answer. If a tool returns ok=false, explain the limitation and
-continue with the best available answer rather than failing the conversation.`;
-
-const MAX_AGENT_STEPS = 5;
+import type { ToolScope } from "../agent-tools";
+import type { AuthenticatedUser } from "../auth/authenticated-user";
+import type { AppConfig } from "../config/configuration";
+import { HistoryService } from "../persistence/history.service";
+import { ToolsService } from "../tools/tools.service";
+import { MAX_AGENT_STEPS, SYSTEM_PROMPT, createModel } from "./agent.constants";
+import type { ChatRequestDto } from "./dto/chat-request.dto";
+import { onStepFinish, onToolCallFinish, onToolCallStart } from "./tool-trace";
 
 const TITLE_SYSTEM_PROMPT = `You write titles for conversations between an
 investment broker and an AI assistant. Summarize the conversation's topic in
@@ -60,55 +33,28 @@ interface UIMessageStreamFinishEvent {
   isAborted?: boolean;
 }
 
-interface StreamTextResult {
-  pipeUIMessageStreamToResponse: (
-    response: Response,
-    options?: {
-      onError?: (error: unknown) => string;
-      onFinish?: (event: UIMessageStreamFinishEvent) => void | Promise<void>;
-    },
-  ) => void;
-}
-
-interface StreamTextOptions {
-  model: unknown;
-  system: string;
-  messages: unknown[];
-  tools: Record<string, unknown>;
-  stopWhen: unknown;
-  maxRetries: number;
-  onError?: (event: { error: unknown }) => void;
-}
-
-const streamTextLoose = streamText as unknown as (
-  options: StreamTextOptions,
-) => StreamTextResult;
-
-const stepCountIsLoose = stepCountIs as unknown as (stepCount: number) => unknown;
-
-const generateTextLoose = generateText as unknown as (options: {
-  model: unknown;
-  system: string;
-  prompt: string;
-  maxRetries?: number;
-}) => Promise<{ text: string }>;
-
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
+  private readonly awsRegion: string;
+  private readonly modelId: string;
   private readonly isProduction: boolean;
 
   constructor(
-    @Inject(BEDROCK_MODEL) private readonly model: unknown,
-    private readonly knowledgeBase: KnowledgeBaseService,
-    private readonly policy: PolicyService,
-    private readonly party: PartyService,
-    private readonly history: HistoryService,
-    config: ConfigService<AppConfig, true>,
+    @Inject(ToolsService) private readonly toolsService: ToolsService,
+    @Inject(HistoryService) private readonly history: HistoryService,
+    @Inject(ConfigService) config: ConfigService<AppConfig, true>,
   ) {
-    this.isProduction = config.get('nodeEnv', { infer: true }) === 'production';
+    this.awsRegion = config.get("aws", { infer: true }).region;
+    this.modelId = config.get("bedrock", { infer: true }).modelId;
+    this.isProduction = config.get("nodeEnv", { infer: true }) === "production";
   }
 
+  /**
+   * Streaming chat for the frontend: emits the AI SDK UI Message Stream that
+   * useChat() consumes, with tools scoped to the authenticated user, and
+   * persists both turns of the conversation when a conversationId is given.
+   */
   async streamChat(
     request: ChatRequestDto,
     user: AuthenticatedUser,
@@ -126,23 +72,19 @@ export class AgentService {
     // Persist the user's turn before streaming. Best-effort: a history failure
     // must never block the chat response.
     if (conversationId) {
-      void this.persist(user.userId, conversationId, 'user', userPartsToPersist);
+      void this.persist(user.userId, conversationId, "user", userPartsToPersist);
     }
 
-    const result = streamTextLoose({
-      model: this.model,
+    const result = streamText({
+      model: createModel(this.awsRegion, this.modelId),
       system: SYSTEM_PROMPT,
       messages,
-      tools: buildAgentTools(
-        {
-          policy: this.policy,
-          party: this.party,
-          knowledgeBase: this.knowledgeBase,
-        },
-        this.toolContext(user),
-      ),
-      stopWhen: stepCountIsLoose(MAX_AGENT_STEPS),
+      tools: this.toolsService.createTools(this.toolScope(user)),
+      stopWhen: stepCountIs(MAX_AGENT_STEPS),
       maxRetries: 2,
+      experimental_onToolCallStart: onToolCallStart,
+      experimental_onToolCallFinish: onToolCallFinish,
+      onStepFinish,
       onError: ({ error }) => {
         this.logger.error(
           `streamText error: ${this.describeError(error)}`,
@@ -157,13 +99,13 @@ export class AgentService {
     result.pipeUIMessageStreamToResponse(res, {
       // The UI-message onFinish (unlike streamText's) carries the assistant
       // message with its tool parts, so charts/diagrams survive a reload.
-      onFinish: ({ responseMessage, isAborted }) => {
+      onFinish: ({ responseMessage, isAborted }: UIMessageStreamFinishEvent) => {
         if (!conversationId || isAborted) {
           return;
         }
         const parts = this.persistableParts(responseMessage?.parts ?? []);
         if (parts.length > 0) {
-          void this.persist(user.userId, conversationId, 'assistant', parts);
+          void this.persist(user.userId, conversationId, "assistant", parts);
         }
         // Best-effort: summarize the first exchange into a sidebar title.
         void this.maybeGenerateTitle(
@@ -173,7 +115,7 @@ export class AgentService {
           parts,
         );
       },
-      onError: (error) => {
+      onError: (error: unknown) => {
         const detail = this.describeError(error);
         this.logger.error(
           `Agent stream failed: ${detail}`,
@@ -183,19 +125,51 @@ export class AgentService {
         // (bad credentials, wrong model id, unreachable upstream, …) are
         // debuggable from the browser. In production, keep details server-side.
         return this.isProduction
-          ? 'An internal error occurred while generating the response.'
+          ? "An internal error occurred while generating the response."
           : `Agent error: ${detail}`;
       },
     });
   }
 
+  private toolScope(user: AuthenticatedUser): ToolScope {
+    return {
+      userId: user.userId,
+      email: user.email,
+      brokerId: this.claimString(user, [
+        "brokerId",
+        "broker_id",
+        "advisorId",
+        "advisor_id",
+        "custom:broker_id",
+        "custom:advisor_id",
+      ]),
+      partyId: this.claimString(user, [
+        "partyId",
+        "party_id",
+        "clientId",
+        "client_id",
+        "custom:party_id",
+      ]),
+    };
+  }
+
+  private claimString(user: AuthenticatedUser, names: string[]): string | undefined {
+    for (const name of names) {
+      const value = user.claims[name];
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+    return undefined;
+  }
+
   private describeError(error: unknown): string {
     if (error instanceof Error) {
       const cause =
-        error.cause instanceof Error ? ` (cause: ${error.cause.message})` : '';
+        error.cause instanceof Error ? ` (cause: ${error.cause.message})` : "";
       return `${error.name}: ${error.message}${cause}`;
     }
-    return typeof error === 'string' ? error : JSON.stringify(error);
+    return typeof error === "string" ? error : JSON.stringify(error);
   }
 
   /**
@@ -212,11 +186,11 @@ export class AgentService {
         state?: string;
         output?: { ok?: boolean };
       };
-      if (p.type === 'text') {
-        return typeof p.text === 'string' && p.text.length > 0;
+      if (p.type === "text") {
+        return typeof p.text === "string" && p.text.length > 0;
       }
-      if (p.type === 'tool-presentChart' || p.type === 'tool-presentDiagram') {
-        return p.state === 'output-available' && p.output?.ok === true;
+      if (p.type === "tool-presentChart" || p.type === "tool-presentDiagram") {
+        return p.state === "output-available" && p.output?.ok === true;
       }
       return false;
     });
@@ -231,7 +205,7 @@ export class AgentService {
       return last.parts ? structuredClone(last.parts) : [];
     }
     if (request.prompt) {
-      return [{ type: 'text', text: request.prompt }];
+      return [{ type: "text", text: request.prompt }];
     }
     return [];
   }
@@ -259,8 +233,8 @@ export class AgentService {
         return;
       }
       const assistantText = this.textFromParts(assistantParts);
-      const { text } = await generateTextLoose({
-        model: this.model,
+      const { text } = await generateText({
+        model: createModel(this.awsRegion, this.modelId),
         system: TITLE_SYSTEM_PROMPT,
         prompt: `User: ${userText.slice(0, TITLE_CONTEXT_CHARS)}\n\nAssistant: ${assistantText.slice(0, TITLE_CONTEXT_CHARS)}`,
         maxRetries: 1,
@@ -281,19 +255,19 @@ export class AgentService {
     return parts
       .map((part) => {
         const p = part as { type?: string; text?: string };
-        return p.type === 'text' && typeof p.text === 'string' ? p.text : '';
+        return p.type === "text" && typeof p.text === "string" ? p.text : "";
       })
       .filter(Boolean)
-      .join('\n')
+      .join("\n")
       .trim();
   }
 
   /** Normalize model output into a single-line title, or null if unusable. */
   private sanitizeTitle(raw: string): string | null {
     const title = raw
-      .replace(/\s+/g, ' ')
+      .replace(/\s+/g, " ")
       .trim()
-      .replace(/^["'`]+|["'`.]+$/g, '')
+      .replace(/^["'`]+|["'`.]+$/g, "")
       .trim();
     if (!title) {
       return null;
@@ -307,7 +281,7 @@ export class AgentService {
   private async persist(
     userId: string,
     conversationId: string,
-    role: 'user' | 'assistant',
+    role: "user" | "assistant",
     parts: unknown[],
   ): Promise<void> {
     if (!this.history.enabled || parts.length === 0) {
@@ -334,60 +308,24 @@ export class AgentService {
     }
   }
 
-  private async normalizeMessages(request: ChatRequestDto): Promise<unknown[]> {
+  private async normalizeMessages(request: ChatRequestDto): Promise<ModelMessage[]> {
     if (request.messages && request.messages.length > 0) {
-      // convertToModelMessages is async in ai@6 (it was sync in v5). Awaiting it
-      // is essential — otherwise streamText receives a Promise and fails with
-      // "messages.some is not a function".
-      const convertMessages = convertToModelMessages as unknown as (
-        messages: unknown[],
-      ) => Promise<unknown[]>;
       try {
-        return await convertMessages(request.messages);
+        return await convertToModelMessages(
+          request.messages as Parameters<typeof convertToModelMessages>[0],
+        );
       } catch (error) {
         // The DTO only checks that `parts` is an array; convertToModelMessages does
         // the semantic validation. A structurally-valid-but-malformed payload is a
         // client error (400), not an internal failure (500).
         const detail =
-          error instanceof Error ? error.message : 'unknown conversion error';
+          error instanceof Error ? error.message : "unknown conversion error";
         throw new BadRequestException(`Invalid \`messages\` payload: ${detail}`);
       }
     }
     if (request.prompt) {
-      return [{ role: 'user', content: request.prompt }];
+      return [{ role: "user", content: request.prompt }];
     }
-    throw new BadRequestException('Either `messages` or `prompt` is required.');
-  }
-
-  private toolContext(user: AuthenticatedUser): BusinessToolContext {
-    return {
-      userId: user.userId,
-      email: user.email,
-      brokerId: this.claimString(user, [
-        'brokerId',
-        'broker_id',
-        'advisorId',
-        'advisor_id',
-        'custom:broker_id',
-        'custom:advisor_id',
-      ]),
-      partyId: this.claimString(user, [
-        'partyId',
-        'party_id',
-        'clientId',
-        'client_id',
-        'custom:party_id',
-      ]),
-    };
-  }
-
-  private claimString(user: AuthenticatedUser, names: string[]): string | undefined {
-    for (const name of names) {
-      const value = user.claims[name];
-      if (typeof value === 'string' && value.trim().length > 0) {
-        return value.trim();
-      }
-    }
-    return undefined;
+    throw new BadRequestException("Either `messages` or `prompt` is required.");
   }
 }

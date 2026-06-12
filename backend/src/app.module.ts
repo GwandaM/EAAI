@@ -1,15 +1,16 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { AgentModule } from './agent/agent.module';
 import { AuthModule } from './auth/auth.module';
+import { ChatModule } from './chat/chat.module';
+import { LoggingMiddleware } from './common/logging.middleware';
 import { buildAppConfig } from './config/configuration';
 import { validateEnv } from './config/env.validation';
-import { LlmModule } from './llm/llm.module';
-import { PersistenceModule } from './persistence/persistence.module';
-import { HistoryModule } from './persistence/history.module';
-import { ToolsModule } from './tools/tools.module';
 import { HealthModule } from './health/health.module';
+import { HistoryModule } from './persistence/history.module';
+import { PersistenceModule } from './persistence/persistence.module';
+import { ToolsModule } from './tools/tools.module';
 
 @Module({
   imports: [
@@ -21,11 +22,15 @@ import { HealthModule } from './health/health.module';
     }),
     AuthModule,
     PersistenceModule,
-    LlmModule,
     ToolsModule,
     AgentModule,
+    ChatModule,
     HistoryModule,
     HealthModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(LoggingMiddleware).forRoutes('*');
+  }
+}

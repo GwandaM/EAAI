@@ -1,12 +1,13 @@
 /**
  * Tool harness CLI: invoke any model-facing tool directly from the terminal,
  * bypassing the model. Boots the real DI container, builds the same tool
- * objects the agent uses (via buildAgentTools), validates args with the same
- * Zod schemas the model is held to, and prints the { ok, ... } envelope.
+ * objects the agent uses (ToolsService → agent-tools/createTools), validates
+ * args with the same Zod schemas the model is held to, and prints the result.
+ * API tools throw on failure (exit 1); visualization/oracle return { ok }.
  *
  *   npm run tools -- list
  *   npm run tools -- describe getPolicy
- *   npm run tools -- run getPolicy --args '{"policyId":"P-1001"}' --broker BRK-9
+ *   npm run tools -- run getPolicy --args '{"policyNumber":"P-1001"}' --broker BRK-9
  *   npm run tools -- run oracle.query --args '{"sql":"SELECT 1 FROM dual"}'
  */
 import 'reflect-metadata';
@@ -14,14 +15,11 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { z } from 'zod';
 
-import { buildAgentTools } from '../tools/agent-tools';
-import { defineAgentTool, type AgentTool } from '../tools/ai-tool';
-import type { BusinessToolContext } from '../tools/business-api/business-tool-context';
-import { KnowledgeBaseService } from '../tools/knowledge-base/knowledge-base.service';
+import { tool } from 'ai';
+
+import type { ToolScope } from '../agent-tools';
 import { OracleService } from '../tools/oracle/oracle.service';
-import { PartyService } from '../tools/party/party.service';
-import { PolicyService } from '../tools/policy/policy.service';
-import { wrapToolResult } from '../tools/tool-result';
+import { ToolsService } from '../tools/tools.service';
 import { ToolsCliModule } from './tools-cli.module';
 
 const USAGE = `Tool harness CLI — invoke agent tools directly, no model involved.
@@ -33,17 +31,25 @@ Usage:
 
 Options:
   --args '<json>'   Tool input as a JSON object (default: {})
-  --user <id>       BusinessToolContext.userId   (default: cli-dev-user)
-  --email <email>   BusinessToolContext.email
-  --broker <id>     BusinessToolContext.brokerId
-  --party <id>      BusinessToolContext.partyId
+  --user <id>       ToolScope.userId   (default: cli-dev-user)
+  --email <email>   ToolScope.email
+  --broker <id>     ToolScope.brokerId
+  --party <id>      ToolScope.partyId
   --json            Print only the raw JSON result (for piping/scripting)
 
-Exit codes: 0 = ok:true, 1 = ok:false or invalid args, 2 = usage error.`;
+Exit codes: 0 = success, 1 = tool threw / ok:false / invalid args, 2 = usage error.`;
 
 class UsageError extends Error {}
 
-type CliTool = AgentTool<unknown, unknown>;
+/** The shape the CLI needs from any model-facing tool in the registry. */
+interface CliTool {
+  description: string;
+  inputSchema: z.ZodTypeAny;
+  execute?: (
+    input: unknown,
+    options: { toolCallId: string; messages: never[] },
+  ) => Promise<unknown>;
+}
 
 interface CliArgs {
   command: string;
@@ -98,7 +104,7 @@ function parseCliArgs(argv: string[]): CliArgs {
   };
 }
 
-function buildContext(cli: CliArgs): BusinessToolContext {
+function buildContext(cli: CliArgs): ToolScope {
   return {
     userId: cli.user ?? 'cli-dev-user',
     email: cli.email,
@@ -108,7 +114,7 @@ function buildContext(cli: CliArgs): BusinessToolContext {
 }
 
 /** Dev-only Oracle wrapper. Lives in the CLI on purpose: the agent registry
- *  (buildAgentTools) must never expose raw SQL to the model. */
+ *  (agent-tools/createTools) must never expose raw SQL to the model. */
 const oracleQuerySchema = z.object({
   sql: z
     .string()
@@ -121,12 +127,21 @@ const oracleQuerySchema = z.object({
 });
 
 function buildOracleCliTool(service: OracleService): CliTool {
-  return defineAgentTool<z.infer<typeof oracleQuerySchema>, unknown>({
+  return tool({
     description:
       'DEV-ONLY: run a read-only SQL query against Oracle. Not registered with the agent.',
     inputSchema: oracleQuerySchema,
-    execute: async (input) => wrapToolResult('oracle.query', () => service.query(input)),
-  }) as CliTool;
+    execute: async (input) => {
+      try {
+        return { ok: true, data: await service.query(input) };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  }) as unknown as CliTool;
 }
 
 /** Strip Optional/Default/Nullable/Effects wrappers to reach the core schema. */
@@ -243,11 +258,25 @@ async function runTool(registry: Record<string, CliTool>, cli: CliArgs): Promise
     };
   }
 
+  // Party/Policy tools throw on failure (the AI SDK turns that into a
+  // tool-error part for the model); the CLI surfaces it as exit code 1.
   const startedAt = Date.now();
-  const result = await tool.execute?.(validation.data, {
-    toolCallId: 'cli',
-    messages: [],
-  });
+  let result: unknown;
+  try {
+    result = await tool.execute?.(validation.data, {
+      toolCallId: 'cli',
+      messages: [],
+    });
+  } catch (error) {
+    const elapsedMs = Date.now() - startedAt;
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      output: cli.json
+        ? JSON.stringify({ error: message })
+        : `${cli.toolName} failed (${elapsedMs}ms)\n${message}`,
+      exitCode: 1,
+    };
+  }
   const elapsedMs = Date.now() - startedAt;
 
   const ok =
@@ -279,14 +308,9 @@ async function main(): Promise<void> {
   let exitCode = 0;
   try {
     const registry: Record<string, CliTool> = {
-      ...(buildAgentTools(
-        {
-          policy: app.get(PolicyService),
-          party: app.get(PartyService),
-          knowledgeBase: app.get(KnowledgeBaseService),
-        },
-        buildContext(cli),
-      ) as unknown as Record<string, CliTool>),
+      ...(app
+        .get(ToolsService)
+        .createTools(buildContext(cli)) as unknown as Record<string, CliTool>),
       'oracle.query': buildOracleCliTool(app.get(OracleService)),
     };
 

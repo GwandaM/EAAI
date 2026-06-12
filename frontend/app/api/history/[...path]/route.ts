@@ -13,7 +13,7 @@ function backendBaseUrl(): string | undefined {
   const chatUrl = process.env.BACKEND_CHAT_URL;
   if (!chatUrl) {
     return process.env.NODE_ENV !== 'production'
-      ? 'http://localhost:3000'
+      ? 'http://localhost:3005'
       : undefined;
   }
   return chatUrl.replace(/\/agent\/chat\/?$/, '');

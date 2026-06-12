@@ -23,7 +23,7 @@ function copyStreamHeaders(source: Headers): Headers {
 
 // In development, fall back to the local backend so the app works even when
 // the servers are started separately (without scripts/dev.mjs wiring the env).
-const DEV_BACKEND_CHAT_URL = 'http://localhost:3000/agent/chat';
+const DEV_BACKEND_CHAT_URL = 'http://localhost:3005/agent/chat';
 
 export async function POST(request: Request) {
   const backendChatUrl =
@@ -72,8 +72,8 @@ export async function POST(request: Request) {
   }
 
   // An HTML 404 means whatever answered is not the NestJS backend — typically
-  // this Next.js dev server proxying to itself because it took port 3000
-  // (started standalone before/without the backend). Surface that instead of
+  // this Next.js dev server proxying to itself on the backend target port.
+  // Surface that instead of
   // passing the confusing 404 through to useChat.
   if (
     upstream.status === 404 &&
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         error:
           `No backend found at ${backendChatUrl} (got an HTML 404 — likely this ` +
           'Next.js server answering its own proxy request). Start the NestJS ' +
-          'backend on port 3000 (`npm run dev` or `npm run start:dev` from the ' +
+          'backend on port 3005 (`npm run dev` or `npm run start:dev` from the ' +
           'repo root) or set BACKEND_CHAT_URL.',
       },
       { status: 502 },

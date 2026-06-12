@@ -20,23 +20,11 @@ import {
   YAxis,
 } from 'recharts';
 
-// Mirrors the backend presentChart tool output (backend/src/tools/visualization).
-export interface ChartSpec {
-  kind: 'chart';
-  chartType:
-    | 'bar'
-    | 'horizontal-bar'
-    | 'line'
-    | 'area'
-    | 'pie'
-    | 'donut'
-    | 'scatter';
-  title: string;
-  description?: string;
-  xAxisLabel?: string;
-  yAxisLabel?: string;
-  series: { name: string; points: { x: string | number; y: number }[] }[];
-}
+// The spec type comes straight from the backend presentChart tool's zod
+// schema (type-only import — nothing from the backend ships to the browser).
+import type { ChartSpec } from '@backend/agent-tools/ui';
+
+export type { ChartSpec };
 
 const PALETTE = [
   '#2563eb',
